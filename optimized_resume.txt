@@ -1,0 +1,132 @@
+DAVID CARKSON AGBOR
+Lagos, Nigeria | +234 8138824521 | carksontech@gmail.com | [LinkedIn URL] | [GitHub URL]
+
+FULL-STACK SOFTWARE ENGINEER | BACKEND DEVELOPER | PYTHON SPECIALIST
+
+PROFESSIONAL SUMMARY
+Results-driven Full-Stack Software Engineer with 4+ years of experience in Python, Django, and React. Expertise in building scalable web applications, RESTful APIs, and database-driven solutions. Proficient in cloud deployment (AWS), DevOps (Docker, Kubernetes), and Agile methodologies. Passionate about delivering high-performance, secure software that drives business value. Seeking challenging opportunities in full-stack development, backend engineering, or Python-focused roles.
+
+SKILLS
+• Languages: Python, JavaScript, Java, PHP
+• Frameworks: Django, React, Next.js, FastAPI
+• Databases: PostgreSQL, MySQL, MongoDB
+• Cloud & DevOps: AWS, Docker, Kubernetes, Jenkins, GitLab CI/CD
+• APIs & Security: RESTful APIs, GraphQL, JWT, OAuth2
+• Front-End: HTML5, CSS3, Bootstrap, Tailwind CSS
+• Tools: Git, GitHub, Postman, VS Code
+• Testing: Pytest, Jest, Unit Testing
+• Methodologies: Agile, Scrum, TDD
+
+PROFESSIONAL EXPERIENCE
+
+Full-Stack Developer
+Bluedartexpress Logistica, Lagos, Nigeria
+September 2023
+• Developed a comprehensive logistics platform using Python, Django, and React, handling 10,000+ monthly transactions.
+• Built RESTful APIs and integrated payment gateways, reducing processing time by 30%.
+• Implemented responsive UI with Bootstrap and Tailwind, improving user engagement by 40%.
+• Deployed on AWS with Docker containers, ensuring 99.9% uptime and scalability.
+
+Backend Developer
+Sankies Enterprise, Lagos, Nigeria
+February 2023
+• Architected and maintained backend systems for e-commerce applications using Django and PostgreSQL.
+• Designed and optimized APIs serving 5,000+ users, achieving 95% response time under 200ms.
+• Integrated third-party services and ensured data security with JWT authentication.
+• Collaborated in Agile sprints, delivering features 20% faster through CI/CD pipelines.
+
+Full-Stack Training Lead
+Carksontech Academy, Lagos, Nigeria
+May - December 2023
+• Led training programs for 50+ developers in full-stack technologies, focusing on Python, Django, and React.
+• Developed curriculum and hands-on projects, resulting in 90% job placement rate for graduates.
+• Mentored teams in best practices, including code reviews and testing strategies.
+
+Python Instructor
+National Institute of Information Technology, Lagos, Nigeria
+2024 – Present
+• Teach advanced Python concepts to 100+ students, emphasizing backend development and algorithms.
+• Designed assessments and projects, achieving 95% student satisfaction scores.
+
+EDUCATION
+DIGINXT-MMS Software Engineering
+National Institute of Technology (NIIT), FESTAC, Nigeria
+2020 - 2024
+
+CERTIFICATIONS
+• Python Django Development (Udemy)
+• REST API Development (Udemy)
+• Certified Python Programmer (Alison)
+• Cloud Computing & DevOps (Alison)
+• AWS Certified Cloud Practitioner (In Progress)
+
+LANGUAGES
+English (Fluent), Igbo (Native)
+
+REFERENCES
+Available upon requestLagos, Nigeria | +234 8138824521 | carksontech@gmail.com | [LinkedIn URL] | [GitHub URL]
+
+FULL-STACK SOFTWARE ENGINEER | BACKEND DEVELOPER | PYTHON SPECIALIST
+
+PROFESSIONAL SUMMARY
+Results-driven Full-Stack Software Engineer with 4+ years of experience in Python, Django, and React. Expertise in building scalable web applications, RESTful APIs, and database-driven solutions. Proficient in cloud deployment (AWS), DevOps (Docker, Kubernetes), and Agile methodologies. Passionate about delivering high-performance, secure software that drives business value. Seeking challenging opportunities in full-stack development, backend engineering, or Python-focused roles.
+
+SKILLS
+• Languages: Python, JavaScript, Java, PHP
+• Frameworks: Django, React, Next.js, FastAPI
+• Databases: PostgreSQL, MySQL, MongoDB
+• Cloud & DevOps: AWS, Docker, Kubernetes, Jenkins, GitLab CI/CD
+• APIs & Security: RESTful APIs, GraphQL, JWT, OAuth2
+• Front-End: HTML5, CSS3, Bootstrap, Tailwind CSS
+• Tools: Git, GitHub, Postman, VS Code
+• Testing: Pytest, Jest, Unit Testing
+• Methodologies: Agile, Scrum, TDD
+
+PROFESSIONAL EXPERIENCE
+
+Full-Stack Developer
+Bluedartexpress Logistica, Lagos, Nigeria
+September 2023
+• Developed a comprehensive logistics platform using Python, Django, and React, handling 10,000+ monthly transactions.
+• Built RESTful APIs and integrated payment gateways, reducing processing time by 30%.
+• Implemented responsive UI with Bootstrap and Tailwind, improving user engagement by 40%.
+• Deployed on AWS with Docker containers, ensuring 99.9% uptime and scalability.
+
+Backend Developer
+Sankies Enterprise, Lagos, Nigeria
+February 2023
+• Architected and maintained backend systems for e-commerce applications using Django and PostgreSQL.
+• Designed and optimized APIs serving 5,000+ users, achieving 95% response time under 200ms.
+• Integrated third-party services and ensured data security with JWT authentication.
+• Collaborated in Agile sprints, delivering features 20% faster through CI/CD pipelines.
+
+Full-Stack Training Lead
+Carksontech Academy, Lagos, Nigeria
+May - December 2023
+• Led training programs for 50+ developers in full-stack technologies, focusing on Python, Django, and React.
+• Developed curriculum and hands-on projects, resulting in 90% job placement rate for graduates.
+• Mentored teams in best practices, including code reviews and testing strategies.
+
+Python Instructor
+National Institute of Information Technology, Lagos, Nigeria
+2024 – Present
+• Teach advanced Python concepts to 100+ students, emphasizing backend development and algorithms.
+• Designed assessments and projects, achieving 95% student satisfaction scores.
+
+EDUCATION
+DIGINXT-MMS Software Engineering
+National Institute of Technology (NIIT), FESTAC, Nigeria
+2020 - 2024
+
+CERTIFICATIONS
+• Python Django Development (Udemy)
+• REST API Development (Udemy)
+• Certified Python Programmer (Alison)
+• Cloud Computing & DevOps (Alison)
+• AWS Certified Cloud Practitioner (In Progress)
+
+LANGUAGES
+English (Fluent), Igbo (Native)
+
+REFERENCES
+Available upon request

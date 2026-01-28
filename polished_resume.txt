@@ -1,0 +1,194 @@
+DAVID CARKSON AGBOR
+Address: Lagos, Nigeria • Phone: +234 8138824521 • Email: carksontech@gmail.com
+LinkedIn: [Insert LinkedIn URL] • GitHub: [Insert GitHub URL]
+
+SOFTWARE ENGINEER PROFESSIONAL
+
+EDUCATION
+National Institute of Technology (NIIT), FESTAC, Nigeria
+DIGINXT-MMS Software Engineering
+2020 - 2024
+
+CORE COMPETENCIES
+• Programming Languages: Python, JavaScript, Java, PHP
+• Frameworks: Django, React, Next.js
+• Databases: SQL, MongoDB
+• Cloud Platforms: AWS
+• API Development: RESTful APIs, FastAPI
+• Front-end Development: HTML, CSS, Bootstrap, Tailwind CSS
+• DevOps & CI/CD: Docker, Kubernetes, Jenkins, GitLab CI/CD
+• Testing Frameworks: Pytest, Jest
+• Security Practices: JWT, OAuth2
+• Version Control: GitHub, GitLab
+
+SOFT SKILLS
+• Analytical problem-solving and efficient solution design and implementation
+• Collaboration with cross-functional teams (engineers, designers, stakeholders) to deliver successful projects
+• Effective communication of technical concepts to technical and non-technical audiences
+• Mentoring junior engineers and contributing to team success
+• Thorough code reviews, bug identification, and ensuring software accuracy
+
+CAREER SUMMARY
+Software Engineer with over 4 years of experience in designing, developing, and maintaining software applications. Proficient in Django and Python for backend development, React, HTML, CSS, and JavaScript for UI design. Skilled in database management with SQL and MongoDB, RESTful API integration, AWS cloud computing, and application security. Experienced with GitHub for version control and Agile methodologies. Additional expertise in PHP and Java for flexible solutions. Committed to continuous improvement and innovative contributions.
+
+PROFESSIONAL EXPERIENCE
+
+Python and Logic Building Instructor
+National Institute of Information Technology
+2024 – Present
+• Designed and developed engaging lesson plans, assignments, and projects for Python programming and logic building
+• Reviewed student code, provided constructive feedback, and guided skill improvement
+• Offered one-on-one mentoring to help students overcome challenges and achieve goals
+• Developed and refined curriculum aligned with industry standards
+• Created and updated course materials, including textbooks, slides, and online resources
+• Designed assessments, quizzes, and exams to evaluate student understanding
+• Held office hours for additional support
+• Collected and incorporated student feedback to improve instruction
+• Monitored progress and provided targeted support
+• Managed classroom environment for effective learning
+• Graded assignments and provided timely feedback
+• Delivered high-quality instruction with clear explanations and demonstrations
+• Successfully graduated a minimum of 20 students every 2 months, producing high-caliber professionals (Wave Academies, 2023-2024)
+
+Full Stack Training Program Lead
+Carksontech Academy
+May - December 2023
+• Trained individuals in full-stack development, equipping them with skills for dynamic web applications
+• Covered frontend development with HTML5, CSS3, JavaScript, and Bootstrap
+• Taught backend development using Python, Django, and related technologies
+• Instructed on database management and integration
+• Guided API design and development
+• Oversaw deployment and maintenance of web applications
+• Ensured trainees gained hands-on experience for tech industry careers
+
+Python (Django) Backend Developer
+Bluedartexpress Logistica
+September 2023
+• Built a fully functional logistics website using Python, Django, REST API, HTML5/CSS3, Bootstrap, and JavaScript
+• Integrated frontend and backend for seamless user experience and data exchange
+• Developed custom features to meet client requirements (e.g., tracking system, payment gateway)
+• Implemented scalable solutions for high performance with large user volumes
+• Maintained detailed documentation, including code comments, API docs, and technical guides
+
+Python (Django) Backend Developer
+Sankies Enterprise
+February 2023
+• Designed, developed, and maintained scalable backend architecture using Django
+• Created RESTful APIs with Django Rest Framework for frontend and third-party integrations
+• Managed databases with Django ORM, ensuring data consistency and integrity
+• Collaborated with DevOps for production deployment and maintenance
+
+TRAININGS & CERTIFICATIONS
+• Certified Python Programming (Alison)
+• Cloud Computing and DevOps (Alison)
+• Python Django (Udemy)
+• REST API Development (Udemy)
+• Product Manager (Udemy, 2024 - In Progress)
+• Microsoft Power BI Desktop for Business Intelligence (Udemy, 2024 - In Progress)
+• Shopper Marketing, Store Design and Visual Merchandising (Udemy, 2023)
+• B2B, B2C Business Lead Generation (2023)
+• Web Design (Digital Fortress, 2023)
+
+LANGUAGES
+• English: Very fluent (oral and written)
+• Igbo: Native speaker level
+• Calabar: Native speaker level
+
+REFERENCES
+Available upon requestAddress: Lagos, Nigeria • Phone: +234 8138824521 • Email: carksontech@gmail.com
+LinkedIn: [Insert LinkedIn URL] • GitHub: [Insert GitHub URL]
+
+SOFTWARE ENGINEER PROFESSIONAL
+
+EDUCATION
+National Institute of Technology (NIIT), FESTAC, Nigeria
+DIGINXT-MMS Software Engineering
+2020 - 2024
+
+CORE COMPETENCIES
+• Programming Languages: Python, JavaScript, Java, PHP
+• Frameworks: Django, React, Next.js
+• Databases: SQL, MongoDB
+• Cloud Platforms: AWS
+• API Development: RESTful APIs, FastAPI
+• Front-end Development: HTML, CSS, Bootstrap, Tailwind CSS
+• DevOps & CI/CD: Docker, Kubernetes, Jenkins, GitLab CI/CD
+• Testing Frameworks: Pytest, Jest
+• Security Practices: JWT, OAuth2
+• Version Control: GitHub, GitLab
+
+SOFT SKILLS
+• Analytical problem-solving and efficient solution design and implementation
+• Collaboration with cross-functional teams (engineers, designers, stakeholders) to deliver successful projects
+• Effective communication of technical concepts to technical and non-technical audiences
+• Mentoring junior engineers and contributing to team success
+• Thorough code reviews, bug identification, and ensuring software accuracy
+
+CAREER SUMMARY
+Software Engineer with over 4 years of experience in designing, developing, and maintaining software applications. Proficient in Django and Python for backend development, React, HTML, CSS, and JavaScript for UI design. Skilled in database management with SQL and MongoDB, RESTful API integration, AWS cloud computing, and application security. Experienced with GitHub for version control and Agile methodologies. Additional expertise in PHP and Java for flexible solutions. Committed to continuous improvement and innovative contributions.
+
+PROFESSIONAL EXPERIENCE
+
+Python and Logic Building Instructor
+National Institute of Information Technology
+2024 – Present
+• Designed and developed engaging lesson plans, assignments, and projects for Python programming and logic building
+• Reviewed student code, provided constructive feedback, and guided skill improvement
+• Offered one-on-one mentoring to help students overcome challenges and achieve goals
+• Developed and refined curriculum aligned with industry standards
+• Created and updated course materials, including textbooks, slides, and online resources
+• Designed assessments, quizzes, and exams to evaluate student understanding
+• Held office hours for additional support
+• Collected and incorporated student feedback to improve instruction
+• Monitored progress and provided targeted support
+• Managed classroom environment for effective learning
+• Graded assignments and provided timely feedback
+• Delivered high-quality instruction with clear explanations and demonstrations
+• Successfully graduated a minimum of 20 students every 2 months, producing high-caliber professionals (Wave Academies, 2023-2024)
+
+Full Stack Training Program Lead
+Carksontech Academy
+May - December 2023
+• Trained individuals in full-stack development, equipping them with skills for dynamic web applications
+• Covered frontend development with HTML5, CSS3, JavaScript, and Bootstrap
+• Taught backend development using Python, Django, and related technologies
+• Instructed on database management and integration
+• Guided API design and development
+• Oversaw deployment and maintenance of web applications
+• Ensured trainees gained hands-on experience for tech industry careers
+
+Python (Django) Backend Developer
+Bluedartexpress Logistica
+September 2023
+• Built a fully functional logistics website using Python, Django, REST API, HTML5/CSS3, Bootstrap, and JavaScript
+• Integrated frontend and backend for seamless user experience and data exchange
+• Developed custom features to meet client requirements (e.g., tracking system, payment gateway)
+• Implemented scalable solutions for high performance with large user volumes
+• Maintained detailed documentation, including code comments, API docs, and technical guides
+
+Python (Django) Backend Developer
+Sankies Enterprise
+February 2023
+• Designed, developed, and maintained scalable backend architecture using Django
+• Created RESTful APIs with Django Rest Framework for frontend and third-party integrations
+• Managed databases with Django ORM, ensuring data consistency and integrity
+• Collaborated with DevOps for production deployment and maintenance
+
+TRAININGS & CERTIFICATIONS
+• Certified Python Programming (Alison)
+• Cloud Computing and DevOps (Alison)
+• Python Django (Udemy)
+• REST API Development (Udemy)
+• Product Manager (Udemy, 2024 - In Progress)
+• Microsoft Power BI Desktop for Business Intelligence (Udemy, 2024 - In Progress)
+• Shopper Marketing, Store Design and Visual Merchandising (Udemy, 2023)
+• B2B, B2C Business Lead Generation (2023)
+• Web Design (Digital Fortress, 2023)
+
+LANGUAGES
+• English: Very fluent (oral and written)
+• Igbo: Native speaker level
+• Calabar: Native speaker level
+
+REFERENCES
+Available upon request

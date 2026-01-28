@@ -1,0 +1,18 @@
+from django.urls import path
+from . import views
+
+app_name = 'messaging'
+
+urlpatterns = [
+    path('conversations/', views.ConversationListView.as_view(), name='conversation-list'),
+    path('conversations/create/', views.create_conversation_view, name='create-conversation'),
+    path('conversations/<int:pk>/', views.ConversationDetailView.as_view(), name='conversation-detail'),
+    path('conversations/<int:conversation_id>/messages/', views.MessageListView.as_view(), name='message-list'),
+    path('conversations/<int:conversation_id>/send/', views.send_message_view, name='send-message'),
+    path('conversations/<int:conversation_id>/read/', views.mark_messages_read_view, name='mark-messages-read'),
+    path('conversations/<int:conversation_id>/upload/', views.upload_message_attachment_view, name='upload-message-attachment'),
+    path('messages/<int:message_id>/react/', views.add_message_reaction_view, name='add-message-reaction'),
+    path('messages/<int:message_id>/report/', views.report_message_view, name='report-message'),
+    path('conversations/<int:conversation_id>/settings/', views.update_conversation_settings_view, name='update-conversation-settings'),
+    path('conversations/<int:conversation_id>/', views.delete_conversation_view, name='delete-conversation'),
+]
