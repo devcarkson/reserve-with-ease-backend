@@ -1,17 +1,17 @@
 # Environment variables
-.env
+# .env
 .env.local
 .env.production
 
 # Database
-*.sqlite3
-db.sqlite3
+# *.sqlite3
+# db.sqlite3
 
 # Django
 *.log
 local_settings.py
 staticfiles/
-media/
+# media/
 
 # Cache
 .DS_Store
