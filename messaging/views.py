@@ -5,6 +5,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.utils import timezone
+from django.http import StreamingHttpResponse
 from .models import Conversation, Message, MessageAttachment, MessageReaction, ConversationSettings, MessageReport
 from .serializers import (
     ConversationSerializer, MessageSerializer, MessageCreateSerializer,
@@ -225,6 +226,84 @@ def upload_message_attachment_view(request, conversation_id):
         MessageSerializer(message).data,
         status=status.HTTP_201_CREATED
     )
+
+
+def stream_messages_view(request, conversation_id):
+    """
+    Server-Sent Events endpoint for real-time message updates
+    """
+    print(f"SSE: Starting stream for conversation {conversation_id}, user {request.user.id}")
+
+    try:
+        conversation = Conversation.objects.get(id=conversation_id)
+    except Conversation.DoesNotExist:
+        print(f"SSE: Conversation {conversation_id} not found")
+        return StreamingHttpResponse(
+            f"data: {{\"error\": \"Conversation not found\"}}\n\n",
+            content_type='text/event-stream'
+        )
+
+    # Check if user is participant
+    if not conversation.participants.filter(id=request.user.id).exists():
+        print(f"SSE: User {request.user.id} not participant in conversation {conversation_id}")
+        return StreamingHttpResponse(
+            f"data: {{\"error\": \"Access denied\"}}\n\n",
+            content_type='text/event-stream'
+        )
+
+    print(f"SSE: Stream established for user {request.user.id} in conversation {conversation_id}")
+
+    def event_generator():
+        # Initialize with current message count
+        messages = Message.objects.filter(
+            conversation_id=conversation_id,
+            deleted_at__isnull=True
+        ).order_by('timestamp')
+        last_message_count = messages.count()
+
+        while True:
+            try:
+                # Get current messages
+                messages = Message.objects.filter(
+                    conversation_id=conversation_id,
+                    deleted_at__isnull=True
+                ).order_by('timestamp')
+
+                current_count = messages.count()
+
+                # If new messages arrived, send them
+                if current_count > last_message_count:
+                    print(f"SSE: Detected {current_count - last_message_count} new messages")
+                    new_messages = messages[last_message_count:]
+                    for message in new_messages:
+                        try:
+                            message_data = MessageSerializer(message).data
+                            print(f"SSE: Sending message {message.id} to user {request.user.id}")
+                            yield f"data: {{\"type\": \"new_message\", \"message\": {message_data}}}\n\n"
+                        except Exception as e:
+                            print(f"SSE: Serialization error: {str(e)}")
+                            yield f"data: {{\"error\": \"Serialization error: {str(e)}\"}}\n\n"
+
+                    last_message_count = current_count
+
+                # Send heartbeat to keep connection alive
+                yield f"data: {{\"type\": \"heartbeat\"}}\n\n"
+
+                # Wait before checking again
+                import time
+                time.sleep(1)
+
+            except Exception as e:
+                yield f"data: {{\"error\": \"Connection error\"}}\n\n"
+                break
+
+    response = StreamingHttpResponse(
+        event_generator(),
+        content_type='text/event-stream'
+    )
+    response['Cache-Control'] = 'no-cache'
+    response['X-Accel-Buffering'] = 'no'  # Disable nginx buffering
+    return response
 
 
 @api_view(['POST'])

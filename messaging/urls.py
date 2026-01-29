@@ -14,5 +14,6 @@ urlpatterns = [
     path('messages/<int:message_id>/react/', views.add_message_reaction_view, name='add-message-reaction'),
     path('messages/<int:message_id>/report/', views.report_message_view, name='report-message'),
     path('conversations/<int:conversation_id>/settings/', views.update_conversation_settings_view, name='update-conversation-settings'),
+    path('conversations/<int:conversation_id>/stream/', views.stream_messages_view, name='stream-messages'),
     path('conversations/<int:conversation_id>/', views.delete_conversation_view, name='delete-conversation'),
 ]

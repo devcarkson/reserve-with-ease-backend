@@ -240,6 +240,7 @@ class ReservationListSerializer(serializers.ModelSerializer):
     property_image = serializers.SerializerMethodField()
     property_rating = serializers.FloatField(source='property_obj.rating', read_only=True)
     property_review_count = serializers.IntegerField(source='property_obj.review_count', read_only=True)
+    property_owner = serializers.SerializerMethodField()
     room_name = serializers.SerializerMethodField()
     room_type = serializers.SerializerMethodField()
     user_name = serializers.CharField(source='user.get_full_name', read_only=True)
@@ -251,7 +252,7 @@ class ReservationListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Reservation
-        fields = ('id', 'property_obj', 'property_name', 'property_city', 'property_location', 'property_image', 'property_rating', 'property_review_count',
+        fields = ('id', 'property_obj', 'property_name', 'property_city', 'property_location', 'property_image', 'property_rating', 'property_review_count', 'property_owner',
                  'room', 'room_name', 'room_type', 'user', 'user_name', 'check_in', 'check_out', 'guests', 'total_price',
                  'status', 'payment_method', 'payment_status', 'amount_paid', 'created_at', 'nights', 'is_paid', 'is_active',
                  'receipt_url', 'download_receipt_url')
@@ -271,6 +272,15 @@ class ReservationListSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(f"/api/reservations/{obj.id}/download-receipt/")
             return f"/api/reservations/{obj.id}/download-receipt/"
         return None
+
+    def get_property_owner(self, obj):
+        owner = obj.property_obj.owner
+        return {
+            'id': owner.id,
+            'username': owner.username,
+            'get_full_name': owner.get_full_name(),
+            'profile_picture': owner.profile_picture.url if owner.profile_picture else None,
+        }
 
     def get_property_location(self, obj):
         return f"{obj.property_obj.city}, {obj.property_obj.country}"

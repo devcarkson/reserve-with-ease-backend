@@ -36,7 +36,7 @@ class RoomSerializer(serializers.ModelSerializer):
 
 
 class PropertySerializer(serializers.ModelSerializer):
-    owner = serializers.StringRelatedField(read_only=True)
+    owner = serializers.SerializerMethodField()
     location = serializers.SerializerMethodField()
     price_per_night = serializers.SerializerMethodField()
 
@@ -52,6 +52,14 @@ class PropertySerializer(serializers.ModelSerializer):
         ]
 
     rating = serializers.SerializerMethodField()
+
+    def get_owner(self, obj):
+        return {
+            'id': obj.owner.id,
+            'username': obj.owner.username,
+            'get_full_name': obj.owner.get_full_name(),
+            'profile_picture': obj.owner.profile_picture.url if obj.owner.profile_picture else None,
+        }
 
     def get_rating(self, obj):
         reviews = obj.reviews.all()
@@ -92,6 +100,14 @@ class PropertySerializer(serializers.ModelSerializer):
         if prices:
             return min(prices)
         return obj.price_per_night
+
+    def get_owner(self, obj):
+        return {
+            'id': obj.owner.id,
+            'username': obj.owner.username,
+            'get_full_name': obj.owner.get_full_name(),
+            'profile_picture': obj.owner.profile_picture.url if obj.owner.profile_picture else None,
+        }
 
     def get_formatted_price(self, obj):
         price = self.get_price_per_night(obj)
@@ -169,7 +185,7 @@ class RoomAvailabilitySerializer(serializers.ModelSerializer):
 
 
 class PropertyListSerializer(serializers.ModelSerializer):
-    owner_name = serializers.CharField(source='owner.get_full_name', read_only=True)
+    owner = serializers.SerializerMethodField()
     main_image = serializers.ReadOnlyField()
     location = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
@@ -181,18 +197,22 @@ class PropertyListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Property
         fields = ('id', 'name', 'type', 'city', 'country', 'rating', 'review_count',
-                  'price_per_night', 'currency', 'main_image', 'featured', 'owner_name',
+                  'price_per_night', 'currency', 'main_image', 'featured', 'owner',
                   'location', 'images', 'amenities', 'description', 'free_cancellation', 'breakfast_included')
 
+    def get_owner(self, obj):
+        return {
+            'id': obj.owner.id,
+            'username': obj.owner.username,
+            'get_full_name': obj.owner.get_full_name(),
+            'profile_picture': obj.owner.profile_picture.url if obj.owner.profile_picture else None,
+        }
+
     def get_rating(self, obj):
-        reviews = obj.reviews.all()
-        if reviews.exists():
-            total = sum(review.rating for review in reviews)
-            return round(total / reviews.count(), 1)
         return obj.rating
 
     def get_review_count(self, obj):
-        return obj.reviews.count()
+        return obj.review_count
 
     def get_location(self, obj):
         return {
