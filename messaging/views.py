@@ -1,11 +1,24 @@
 from rest_framework import generics, status, permissions, filters
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, renderer_classes
 from rest_framework.response import Response
+from rest_framework.renderers import BaseRenderer
+
+
+class EventStreamRenderer(BaseRenderer):
+    """Minimal renderer for Server-Sent Events"""
+    media_type = 'text/event-stream'
+    format = 'event-stream'
+
+    def render(self, data, media_type=None, renderer_context=None):
+        # DRF expects a bytes/str return value from renderers; StreamingHttpResponse will bypass this,
+        # but providing a renderer that declares 'text/event-stream' avoids 406 responses from content negotiation.
+        return data
 from django_filters.rest_framework import DjangoFilterBackend
 from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.utils import timezone
 from django.http import StreamingHttpResponse
+import json
 from .models import Conversation, Message, MessageAttachment, MessageReaction, ConversationSettings, MessageReport
 from .serializers import (
     ConversationSerializer, MessageSerializer, MessageCreateSerializer,
@@ -29,11 +42,39 @@ class ConversationListView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
+        print(f"DEBUG: User {user.id} ({user.username}) role: {getattr(user, 'role', 'no role')}")
+        
         qs = Conversation.objects.filter(participants=user).distinct()
+        print(f"DEBUG: Base queryset count: {qs.count()}")
+        
         participant_type = self.request.query_params.get('participant_type')
+        print(f"DEBUG: participant_type filter: {participant_type}")
+        
         # Filter for owners to show only conversations with guests when requested
         if participant_type == 'guest' and getattr(user, 'role', None) == 'owner':
             qs = qs.filter(participants__role='user').distinct()
+            print(f"DEBUG: After guest filter count: {qs.count()}")
+
+        # Optional: filter conversations related to a specific property via reservations
+        prop_filter = self.request.query_params.get('property_filter')
+        if prop_filter:
+            try:
+                from reservations.models import Reservation
+                # Find reservations for this property
+                res_qs = Reservation.objects.filter(
+                    Q(property_obj__id=prop_filter) | Q(property=prop_filter)
+                )
+                conv_qs = Conversation.objects.none()
+                for res in res_qs:
+                    owner = getattr(res.property_obj, 'owner', None) if getattr(res, 'property_obj', None) else None
+                    guest = getattr(res, 'user', None)
+                    if owner and guest:
+                        conv_qs = conv_qs | Conversation.objects.filter(participants=owner).filter(participants=guest)
+                return conv_qs.distinct()
+            except Exception:
+                # Fall back to original qs on error
+                return qs
+
         return qs
 
 
@@ -52,7 +93,7 @@ class ConversationDetailView(generics.RetrieveAPIView):
         ).update(read_at=timezone.now())
         
         # Update unread count
-        unread_count = Message.objects.filter(
+        Message.objects.filter(
             conversation=conversation,
             receiver=self.request.user,
             read_at__isnull=True
@@ -87,64 +128,115 @@ class MessageListView(generics.ListAPIView):
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
+def debug_create_test_conversation(request):
+    """Debug endpoint to create test conversation"""
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+    
+    # Find a guest user (role='user') and current user should be owner
+    guest = User.objects.filter(role='user').first()
+    owner = request.user
+    
+    if not guest:
+        return Response({'error': 'No guest users found'}, status=400)
+    
+    if getattr(owner, 'role', None) != 'owner':
+        return Response({'error': 'Current user is not an owner'}, status=400)
+    
+    # Create conversation
+    conversation = Conversation.objects.create()
+    conversation.participants.add(owner, guest)
+    
+    # Create initial message
+    message = Message.objects.create(
+        conversation=conversation,
+        sender=guest,
+        receiver=owner,
+        content=f"Hello! I'm interested in your property. This is a test message from {guest.username}.",
+        message_type='text'
+    )
+    
+    conversation.last_message = message
+    conversation.save()
+    
+    # Set unread count for owner
+    conversation.set_unread_count(owner, 1)
+    
+    return Response({
+        'message': 'Test conversation created',
+        'conversation_id': conversation.id,
+        'participants': [owner.username, guest.username]
+    })
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
 def create_conversation_view(request):
     """Create a new conversation"""
-    receiver_id = request.data.get('receiver_id')
-    initial_message = request.data.get('message', '')
-    
-    if not receiver_id:
-        return Response({'error': 'Receiver ID is required'}, status=status.HTTP_400_BAD_REQUEST)
-    
     try:
-        receiver = User.objects.get(id=receiver_id)
-    except User.DoesNotExist:
-        return Response({'error': 'Receiver not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    if receiver == request.user:
-        return Response({'error': 'Cannot create conversation with yourself'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    # Check if conversation already exists
-    existing_conversation = Conversation.objects.filter(
-        participants=request.user
-    ).filter(participants=receiver).first()
+        receiver_id = request.data.get('receiver_id')
+        initial_message = request.data.get('message', '')
+        
+        if not receiver_id:
+            return Response({'error': 'Receiver ID is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            receiver = User.objects.get(id=receiver_id)
+        except User.DoesNotExist:
+            return Response({'error': 'Receiver not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        if receiver == request.user:
+            return Response({'error': 'Cannot create conversation with yourself'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if conversation already exists
+        existing_conversation = Conversation.objects.filter(
+            participants=request.user
+        ).filter(participants=receiver).first()
 
-    if existing_conversation:
+        if existing_conversation:
+            serializer = ConversationSerializer(existing_conversation, context={'request': request})
+            return Response(
+                serializer.data,
+                status=status.HTTP_200_OK
+            )
+
+        # Create new conversation
+        conversation = Conversation.objects.create()
+        conversation.participants.add(request.user, receiver)
+
+        # Send initial message if provided
+        if initial_message:
+            message = Message.objects.create(
+                conversation=conversation,
+                sender=request.user,
+                receiver=receiver,
+                content=initial_message,
+                message_type=request.data.get('message_type', 'text')
+            )
+
+            # Update conversation
+            conversation.last_message = message
+            conversation.save()
+
+            # Update unread count for receiver
+            conversation.set_unread_count(receiver, 1)
+            conversation.save()
+
+            return Response(
+                MessageSerializer(message, context={'request': request}).data,
+                status=status.HTTP_201_CREATED
+            )
+
+        serializer = ConversationSerializer(conversation, context={'request': request})
         return Response(
-            ConversationSerializer(existing_conversation).data,
-            status=status.HTTP_200_OK
-        )
-
-    # Create new conversation
-    conversation = Conversation.objects.create()
-    conversation.participants.add(request.user, receiver)
-
-    # Send initial message if provided
-    if initial_message:
-        message = Message.objects.create(
-            conversation=conversation,
-            sender=request.user,
-            receiver=receiver,
-            content=initial_message,
-            message_type=request.data.get('message_type', 'text')
-        )
-
-        # Update conversation
-        conversation.last_message = message
-        conversation.save()
-
-        # Update unread count for receiver
-        conversation.set_unread_count(receiver, 1)
-        conversation.save()
-
-        return Response(
-            MessageSerializer(message).data,
+            serializer.data,
             status=status.HTTP_201_CREATED
         )
-
-    return Response(
-        ConversationSerializer(conversation).data,
-        status=status.HTTP_201_CREATED
-    )
+    except Exception as e:
+        import traceback
+        print(f"Error in create_conversation_view: {e}")
+        traceback.print_exc()
+        return Response({'error': str(e)}, status=500)
 
 
 @api_view(['POST'])
@@ -200,18 +292,20 @@ def upload_message_attachment_view(request, conversation_id):
         content=message_content,
         message_type='file',
         attachment_name=attachment.name,
-        attachment_size=attachment.size,
-        file_type=attachment.content_type
+        attachment_size=attachment.size
     )
     
     # Create attachment record
-    MessageAttachment.objects.create(
+    attachment_record = MessageAttachment.objects.create(
         message=message,
         file=attachment,
         filename=attachment.name,
         file_size=attachment.size,
         file_type=attachment.content_type
     )
+    if hasattr(attachment_record.file, 'url'):
+        message.attachment_url = attachment_record.file.url
+        message.save(update_fields=['attachment_url'])
     
     # Update conversation
     conversation.last_message = message
@@ -228,81 +322,101 @@ def upload_message_attachment_view(request, conversation_id):
     )
 
 
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+@renderer_classes([EventStreamRenderer])
 def stream_messages_view(request, conversation_id):
     """
     Server-Sent Events endpoint for real-time message updates
+    - Requires authentication (supports session or JWT via ?token=)
+    - Accepts optional last_id query param to resume stream
+    - Emits:
+      - event: connected (once)
+      - event: new_message (for each new message) with id: <message id>
+      - event: heartbeat periodically
+      - event: error for errors
     """
-    print(f"SSE: Starting stream for conversation {conversation_id}, user {request.user.id}")
+    # Try to authenticate via session first; if not authenticated and a token is provided, attempt JWT auth
+    if not request.user or not request.user.is_authenticated:
+        token = request.GET.get('token')
+        if token:
+            try:
+                from rest_framework_simplejwt.authentication import JWTAuthentication
+                jwt_auth = JWTAuthentication()
+                validated_token = jwt_auth.get_validated_token(token)
+                user = jwt_auth.get_user(validated_token)
+                # attach user to request for downstream checks
+                request.user = user
+            except Exception:
+                payload = {"error": "Invalid token"}
+                return StreamingHttpResponse(
+                    f"event: error\ndata: {json.dumps(payload)}\n\n",
+                    content_type='text/event-stream',
+                    status=401
+                )
 
+    # Validate conversation and membership
     try:
         conversation = Conversation.objects.get(id=conversation_id)
     except Conversation.DoesNotExist:
-        print(f"SSE: Conversation {conversation_id} not found")
+        payload = {"error": "Conversation not found"}
         return StreamingHttpResponse(
-            f"data: {{\"error\": \"Conversation not found\"}}\n\n",
+            f"event: error\ndata: {json.dumps(payload)}\n\n",
             content_type='text/event-stream'
         )
 
-    # Check if user is participant
     if not conversation.participants.filter(id=request.user.id).exists():
-        print(f"SSE: User {request.user.id} not participant in conversation {conversation_id}")
+        payload = {"error": "Access denied"}
         return StreamingHttpResponse(
-            f"data: {{\"error\": \"Access denied\"}}\n\n",
+            f"event: error\ndata: {json.dumps(payload)}\n\n",
             content_type='text/event-stream'
         )
-
-    print(f"SSE: Stream established for user {request.user.id} in conversation {conversation_id}")
 
     def event_generator():
-        # Initialize with current message count
-        messages = Message.objects.filter(
-            conversation_id=conversation_id,
-            deleted_at__isnull=True
-        ).order_by('timestamp')
-        last_message_count = messages.count()
+        import time
+        # Determine start id
+        try:
+            last_id = int(request.GET.get('last_id')) if request.GET.get('last_id') else None
+        except (TypeError, ValueError):
+            last_id = None
+
+        if last_id is None:
+            last_msg = Message.objects.filter(
+                conversation_id=conversation_id,
+                deleted_at__isnull=True
+            ).order_by('-id').first()
+            last_id = last_msg.id if last_msg else 0
+
+        # Initial connect
+        yield "event: connected\ndata: {}\nretry: 3000\n\n"
 
         while True:
             try:
-                # Get current messages
-                messages = Message.objects.filter(
+                new_qs = Message.objects.filter(
                     conversation_id=conversation_id,
-                    deleted_at__isnull=True
-                ).order_by('timestamp')
+                    deleted_at__isnull=True,
+                    id__gt=last_id
+                ).order_by('id')
 
-                current_count = messages.count()
+                for msg in new_qs:
+                    data = MessageSerializer(msg).data
+                    yield f"event: new_message\ndata: {json.dumps(data)}\nid: {msg.id}\n\n"
+                    last_id = msg.id
 
-                # If new messages arrived, send them
-                if current_count > last_message_count:
-                    print(f"SSE: Detected {current_count - last_message_count} new messages")
-                    new_messages = messages[last_message_count:]
-                    for message in new_messages:
-                        try:
-                            message_data = MessageSerializer(message).data
-                            print(f"SSE: Sending message {message.id} to user {request.user.id}")
-                            yield f"data: {{\"type\": \"new_message\", \"message\": {message_data}}}\n\n"
-                        except Exception as e:
-                            print(f"SSE: Serialization error: {str(e)}")
-                            yield f"data: {{\"error\": \"Serialization error: {str(e)}\"}}\n\n"
-
-                    last_message_count = current_count
-
-                # Send heartbeat to keep connection alive
-                yield f"data: {{\"type\": \"heartbeat\"}}\n\n"
-
-                # Wait before checking again
-                import time
-                time.sleep(1)
-
-            except Exception as e:
-                yield f"data: {{\"error\": \"Connection error\"}}\n\n"
+                # heartbeat
+                yield "event: heartbeat\ndata: {}\n\n"
+                time.sleep(2)
+            except GeneratorExit:
+                break
+            except Exception:
+                err = {"error": "Connection error"}
+                yield f"event: error\ndata: {json.dumps(err)}\n\n"
+                time.sleep(2)
                 break
 
-    response = StreamingHttpResponse(
-        event_generator(),
-        content_type='text/event-stream'
-    )
+    response = StreamingHttpResponse(event_generator(), content_type='text/event-stream')
     response['Cache-Control'] = 'no-cache'
-    response['X-Accel-Buffering'] = 'no'  # Disable nginx buffering
+    response['X-Accel-Buffering'] = 'no'
     return response
 
 

@@ -1,11 +1,13 @@
 from django.urls import path
 from . import views
+from .sse_views import message_stream
 
 app_name = 'messaging'
 
 urlpatterns = [
     path('conversations/', views.ConversationListView.as_view(), name='conversation-list'),
     path('conversations/create/', views.create_conversation_view, name='create-conversation'),
+    path('conversations/debug-create/', views.debug_create_test_conversation, name='debug-create-conversation'),
     path('conversations/<int:pk>/', views.ConversationDetailView.as_view(), name='conversation-detail'),
     path('conversations/<int:conversation_id>/messages/', views.MessageListView.as_view(), name='message-list'),
     path('conversations/<int:conversation_id>/send/', views.send_message_view, name='send-message'),
@@ -14,6 +16,6 @@ urlpatterns = [
     path('messages/<int:message_id>/react/', views.add_message_reaction_view, name='add-message-reaction'),
     path('messages/<int:message_id>/report/', views.report_message_view, name='report-message'),
     path('conversations/<int:conversation_id>/settings/', views.update_conversation_settings_view, name='update-conversation-settings'),
-    path('conversations/<int:conversation_id>/stream/', views.stream_messages_view, name='stream-messages'),
-    path('conversations/<int:conversation_id>/', views.delete_conversation_view, name='delete-conversation'),
+    path('conversations/<int:conversation_id>/stream/', message_stream, name='message-stream'),
+    path('conversations/<int:conversation_id>/archive/', views.delete_conversation_view, name='archive-conversation'),
 ]

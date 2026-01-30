@@ -1,0 +1,3 @@
+# Add this to your existing requirements.txt
+channels
+# channels-redis  # Optional: for Redis channel layer in production

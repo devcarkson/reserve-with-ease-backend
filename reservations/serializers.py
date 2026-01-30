@@ -312,12 +312,13 @@ class OwnerReservationSerializer(serializers.ModelSerializer):
     payment = serializers.SerializerMethodField()
     guest_name = serializers.SerializerMethodField()
     room_name = serializers.SerializerMethodField()
+    owner_user_id = serializers.IntegerField(source='property_obj.owner.id', read_only=True)
 
     class Meta:
         model = Reservation
         fields = ('id', 'property', 'property_name', 'property_location', 'property_image',
                  'user', 'room', 'room_name', 'check_in', 'check_out', 'guests', 'total_price', 'status',
-                 'created_at', 'updated_at', 'guest_info', 'payment', 'guest_name', 'reference')
+                 'created_at', 'updated_at', 'guest_info', 'payment', 'guest_name', 'reference', 'owner_user_id')
 
     def get_property_location(self, obj):
         return f"{obj.property_obj.city}, {obj.property_obj.country}"

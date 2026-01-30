@@ -49,10 +49,17 @@ class MessageCreateSerializer(serializers.ModelSerializer):
         fields = ('content', 'message_type')
 
 
+class UserBasicSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ('id', 'username', 'first_name', 'last_name', 'email', 'role')
+
+
 class ConversationSerializer(serializers.ModelSerializer):
-    participants = serializers.StringRelatedField(many=True, read_only=True)
+    participants = UserBasicSerializer(many=True, read_only=True)
     last_message = MessageSerializer(read_only=True)
     unread_count = serializers.SerializerMethodField()
+    property = serializers.SerializerMethodField()
     
     class Meta:
         model = Conversation
@@ -63,6 +70,33 @@ class ConversationSerializer(serializers.ModelSerializer):
         if request and request.user.is_authenticated:
             return obj.get_unread_count(request.user)
         return 0
+
+    def get_property(self, obj):
+        try:
+            from reservations.models import Reservation
+            users = list(obj.participants.all())
+            print(f"DEBUG: Conversation {obj.id} participants: {[u.username for u in users]}")
+            if len(users) != 2:
+                return None
+            u1, u2 = users
+            res = (
+                Reservation.objects
+                .filter(user__in=[u1, u2], property_obj__owner__in=[u1, u2])
+                .order_by('-created_at')
+                .first()
+            )
+            if res:
+                prop_data = {
+                    'id': res.property_obj.id,
+                    'name': res.property_obj.name
+                }
+                print(f"DEBUG: Found property: {prop_data}")
+                return prop_data
+            print(f"DEBUG: No property found for conversation {obj.id}")
+            return None
+        except Exception as e:
+            print(f"DEBUG: Error getting property: {e}")
+            return None
 
 
 class ConversationCreateSerializer(serializers.ModelSerializer):
