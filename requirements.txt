@@ -43,6 +43,3 @@ uritemplate
 vine
 wcwidth
 whitenoise 
-channels
-# channels-redis
-# daphne

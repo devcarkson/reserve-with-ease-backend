@@ -42,16 +42,26 @@ class ConversationListView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        print(f"DEBUG: User {user.id} ({user.username}) role: {getattr(user, 'role', 'no role')}")
+        print(f"DEBUG: ConversationListView - User {user.id} ({user.username}) is_staff: {getattr(user, 'is_staff', False)} is_superuser: {getattr(user, 'is_superuser', False)}")
         
         qs = Conversation.objects.filter(participants=user).distinct()
         print(f"DEBUG: Base queryset count: {qs.count()}")
         
+        # Debug: Print all conversations for this user
+        for conv in qs:
+            participants = [f"{p.username}({p.id})" for p in conv.participants.all()]
+            print(f"DEBUG: Conversation {conv.id} participants: {participants}")
+        
         participant_type = self.request.query_params.get('participant_type')
         print(f"DEBUG: participant_type filter: {participant_type}")
         
+        # For admin users, show all conversations where admin is participant
+        if getattr(user, 'is_staff', False) and getattr(user, 'is_superuser', False):
+            print(f"DEBUG: Admin user detected, returning all conversations where admin is participant")
+            return qs
+        
         # Filter for owners to show only conversations with guests when requested
-        if participant_type == 'guest' and getattr(user, 'role', None) == 'owner':
+        if participant_type == 'guest' and (getattr(user, 'role', None) == 'owner' or getattr(user, 'role', None) == 'single_owner'):
             # Get conversations where at least one other participant is a guest (role='user')
             guest_conversations = []
             for conv in qs:
@@ -117,19 +127,35 @@ class MessageListView(generics.ListAPIView):
     ordering = ['timestamp']
 
     def get_queryset(self):
-        from rest_framework.exceptions import PermissionDenied
+        user = self.request.user
         conversation_id = self.kwargs['conversation_id']
-        # Ensure the requester is a participant
+        print(f"DEBUG: MessageListView - User {user.id} accessing conversation {conversation_id}")
+        
+        # Ensure the requester is a participant OR is admin accessing admin support conversation
         try:
             conv = Conversation.objects.get(id=conversation_id)
         except Conversation.DoesNotExist:
             return Message.objects.none()
-        if not conv.participants.filter(id=self.request.user.id).exists():
-            raise PermissionDenied("Not a participant of this conversation")
-        return Message.objects.filter(
-            conversation_id=conversation_id,
-            deleted_at__isnull=True
-        )
+        
+        # Check if user is participant
+        if conv.participants.filter(id=user.id).exists():
+            print(f"DEBUG: User is participant in conversation")
+            return Message.objects.filter(
+                conversation_id=conversation_id,
+                deleted_at__isnull=True
+            )
+        
+        # Check if user is admin and this is an admin support conversation
+        admin_user = User.objects.filter(is_staff=True, is_superuser=True).first()
+        if admin_user and conv.participants.filter(id=admin_user.id).exists():
+            print(f"DEBUG: Admin support conversation access granted")
+            return Message.objects.filter(
+                conversation_id=conversation_id,
+                deleted_at__isnull=True
+            )
+        
+        from rest_framework.exceptions import PermissionDenied
+        raise PermissionDenied("Not a participant of this conversation")
 
 
 @api_view(['POST'])
@@ -253,8 +279,13 @@ def mark_messages_read_view(request, conversation_id):
         conversation = Conversation.objects.get(id=conversation_id)
     except Conversation.DoesNotExist:
         return Response({'error': 'Conversation not found'}, status=status.HTTP_404_NOT_FOUND)
-    # Ensure participant
-    if not conversation.participants.filter(id=request.user.id).exists():
+    
+    # Check if user is participant OR admin accessing admin support conversation
+    is_participant = conversation.participants.filter(id=request.user.id).exists()
+    admin_user = User.objects.filter(is_staff=True, is_superuser=True).first()
+    is_admin_conversation = admin_user and conversation.participants.filter(id=admin_user.id).exists()
+    
+    if not (is_participant or is_admin_conversation):
         return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
     
     # Mark all unread messages as read
@@ -529,28 +560,202 @@ def delete_conversation_view(request, conversation_id):
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
+def create_admin_conversation_view(request):
+    """Create a conversation with admin (ReserveWithEase)"""
+    try:
+        # Find admin user
+        admin_user = User.objects.filter(is_staff=True, is_superuser=True).first()
+        print(f"DEBUG: Found admin user: {admin_user}")
+        if not admin_user:
+            return Response({'error': 'Admin user not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        initial_message = request.data.get('message', '')
+        subject = request.data.get('subject', 'Support Request')
+        print(f"DEBUG: Creating conversation between {request.user} and {admin_user}")
+        
+        if not initial_message:
+            return Response({'error': 'Message is required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if conversation already exists
+        existing_conversation = Conversation.objects.filter(
+            participants=request.user
+        ).filter(participants=admin_user).first()
+        print(f"DEBUG: Existing conversation: {existing_conversation}")
+
+        if existing_conversation:
+            # Send message to existing conversation
+            message = Message.objects.create(
+                conversation=existing_conversation,
+                sender=request.user,
+                receiver=admin_user,
+                content=initial_message,
+                message_type='text'
+            )
+            existing_conversation.last_message = message
+            existing_conversation.save()
+            existing_conversation.set_unread_count(admin_user, existing_conversation.get_unread_count(admin_user) + 1)
+            existing_conversation.save()
+            print(f"DEBUG: Added message to existing conversation: {message.id}")
+            
+            return Response(
+                MessageSerializer(message, context={'request': request}).data,
+                status=status.HTTP_201_CREATED
+            )
+
+        # Create new conversation with admin
+        conversation = Conversation.objects.create()
+        conversation.participants.add(request.user, admin_user)
+        print(f"DEBUG: Created new conversation: {conversation.id}")
+
+        # Send initial message
+        message = Message.objects.create(
+            conversation=conversation,
+            sender=request.user,
+            receiver=admin_user,
+            content=initial_message,
+            message_type='text'
+        )
+        print(f"DEBUG: Created message: {message.id}")
+
+        conversation.last_message = message
+        conversation.save()
+        conversation.set_unread_count(admin_user, 1)
+        conversation.save()
+        print(f"DEBUG: Updated conversation with message and unread count")
+
+        return Response(
+            MessageSerializer(message, context={'request': request}).data,
+            status=status.HTTP_201_CREATED
+        )
+    except Exception as e:
+        import traceback
+        print(f"Error in create_admin_conversation_view: {e}")
+        traceback.print_exc()
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_admin_conversation_view(request):
+    """Get conversation with admin"""
+    try:
+        admin_user = User.objects.filter(is_staff=True, is_superuser=True).first()
+        if not admin_user:
+            return Response({'error': 'Admin user not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        conversation = Conversation.objects.filter(
+            participants=request.user
+        ).filter(participants=admin_user).first()
+        
+        if not conversation:
+            return Response({'conversation': None, 'messages': []}, status=status.HTTP_200_OK)
+        
+        messages = Message.objects.filter(
+            conversation=conversation,
+            deleted_at__isnull=True
+        ).order_by('timestamp')
+        
+        return Response({
+            'conversation': ConversationSerializer(conversation, context={'request': request}).data,
+            'messages': MessageSerializer(messages, many=True, context={'request': request}).data
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        print(f"Error in get_admin_conversation_view: {e}")
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def admin_conversations_view(request):
+    """Get only admin support conversations"""
+    try:
+        user = request.user
+        print(f"DEBUG: admin_conversations_view - User {user.id} is_staff: {getattr(user, 'is_staff', False)} is_superuser: {getattr(user, 'is_superuser', False)}")
+        
+        # Find admin user
+        admin_user = User.objects.filter(is_staff=True, is_superuser=True).first()
+        if not admin_user:
+            return Response({'error': 'Admin user not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get conversations where admin is participant and other participant is owner/single_owner
+        conversations = Conversation.objects.filter(
+            participants=admin_user
+        ).filter(
+            participants__role__in=['owner', 'single_owner']
+        ).distinct().order_by('-updated_at')
+        
+        print(f"DEBUG: Found {conversations.count()} admin support conversations")
+        
+        serializer = ConversationSerializer(conversations, many=True, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        print(f"Error in admin_conversations_view: {e}")
+        return Response({'error': str(e)}, status=500)
+    """Get conversation with admin"""
+    try:
+        admin_user = User.objects.filter(is_staff=True, is_superuser=True).first()
+        if not admin_user:
+            return Response({'error': 'Admin user not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        conversation = Conversation.objects.filter(
+            participants=request.user
+        ).filter(participants=admin_user).first()
+        
+        if not conversation:
+            return Response({'conversation': None, 'messages': []}, status=status.HTTP_200_OK)
+        
+        messages = Message.objects.filter(
+            conversation=conversation,
+            deleted_at__isnull=True
+        ).order_by('timestamp')
+        
+        return Response({
+            'conversation': ConversationSerializer(conversation, context={'request': request}).data,
+            'messages': MessageSerializer(messages, many=True, context={'request': request}).data
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        print(f"Error in get_admin_conversation_view: {e}")
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
 def send_message_view(request, conversation_id):
     """Send a message in a conversation"""
     try:
         conversation = Conversation.objects.get(id=conversation_id)
     except Conversation.DoesNotExist:
         return Response({'error': 'Conversation not found'}, status=status.HTTP_404_NOT_FOUND)
-    # Ensure participant
-    if not conversation.participants.filter(id=request.user.id).exists():
+    
+    # Check if user is participant OR admin accessing admin support conversation
+    is_participant = conversation.participants.filter(id=request.user.id).exists()
+    admin_user = User.objects.filter(is_staff=True, is_superuser=True).first()
+    is_admin_conversation = admin_user and conversation.participants.filter(id=admin_user.id).exists()
+    
+    if not (is_participant or is_admin_conversation):
         return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
 
     content = request.data.get('content')
     if not content:
         return Response({'error': 'Message content is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Get other participant
-    other_participant = conversation.participants.exclude(id=request.user.id).first()
+    # Get other participant - if admin conversation, get the owner
+    if is_admin_conversation and not is_participant:
+        # Current user is admin, get the owner participant
+        other_participant = conversation.participants.exclude(id=admin_user.id).first()
+        sender = admin_user  # Admin sends the message
+    else:
+        # Regular participant flow
+        other_participant = conversation.participants.exclude(id=request.user.id).first()
+        sender = request.user
+        
     if not other_participant:
         return Response({'error': 'Conversation has no other participants'}, status=status.HTTP_400_BAD_REQUEST)
 
     message = Message.objects.create(
         conversation=conversation,
-        sender=request.user,
+        sender=sender,
         receiver=other_participant,
         content=content,
         message_type=request.data.get('message_type', 'text')
@@ -569,3 +774,4 @@ def send_message_view(request, conversation_id):
         MessageSerializer(message).data,
         status=status.HTTP_201_CREATED
     )
+
