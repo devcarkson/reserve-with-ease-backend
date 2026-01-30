@@ -52,7 +52,13 @@ class ConversationListView(generics.ListAPIView):
         
         # Filter for owners to show only conversations with guests when requested
         if participant_type == 'guest' and getattr(user, 'role', None) == 'owner':
-            qs = qs.filter(participants__role='user').distinct()
+            # Get conversations where at least one other participant is a guest (role='user')
+            guest_conversations = []
+            for conv in qs:
+                other_participants = conv.participants.exclude(id=user.id)
+                if other_participants.filter(role='user').exists():
+                    guest_conversations.append(conv.id)
+            qs = qs.filter(id__in=guest_conversations)
             print(f"DEBUG: After guest filter count: {qs.count()}")
 
         # Optional: filter conversations related to a specific property via reservations
@@ -399,7 +405,10 @@ def stream_messages_view(request, conversation_id):
                 ).order_by('id')
 
                 for msg in new_qs:
-                    data = MessageSerializer(msg).data
+                    data = {
+                        'type': 'new_message',
+                        'message': MessageSerializer(msg).data
+                    }
                     yield f"event: new_message\ndata: {json.dumps(data)}\nid: {msg.id}\n\n"
                     last_id = msg.id
 
