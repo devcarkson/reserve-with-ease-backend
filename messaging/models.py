@@ -6,6 +6,7 @@ User = get_user_model()
 
 class Conversation(models.Model):
     participants = models.ManyToManyField(User, related_name='conversations')
+    subject = models.CharField(max_length=255, blank=True, default='')  # Add subject field
     last_message = models.OneToOneField(
         'Message', 
         on_delete=models.SET_NULL, 

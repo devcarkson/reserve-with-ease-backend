@@ -36,11 +36,15 @@ class MessageSerializer(serializers.ModelSerializer):
     receiver_avatar = serializers.ImageField(source='receiver.profile_picture', read_only=True)
     attachments = MessageAttachmentSerializer(many=True, read_only=True)
     reactions = MessageReactionSerializer(many=True, read_only=True)
+    is_admin = serializers.SerializerMethodField()
     
     class Meta:
         model = Message
         fields = '__all__'
         read_only_fields = ('sender', 'receiver', 'timestamp')
+    
+    def get_is_admin(self, obj):
+        return getattr(obj.sender, 'is_staff', False) and getattr(obj.sender, 'is_superuser', False)
 
 
 class MessageCreateSerializer(serializers.ModelSerializer):

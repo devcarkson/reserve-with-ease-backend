@@ -582,7 +582,7 @@ def delete_conversation_view(request, conversation_id):
 def create_admin_conversation_view(request):
     """Create a conversation with admin (ReserveWithEase)"""
     try:
-        # Find admin user
+        # Find any available admin user (staff + superuser)
         admin_user = User.objects.filter(is_staff=True, is_superuser=True).first()
         print(f"DEBUG: Found admin user: {admin_user}")
         if not admin_user:
@@ -590,41 +590,16 @@ def create_admin_conversation_view(request):
         
         initial_message = request.data.get('message', '')
         subject = request.data.get('subject', 'Support Request')
-        print(f"DEBUG: Creating conversation between {request.user} and {admin_user}")
+        print(f"DEBUG: Creating conversation between {request.user} and {admin_user} with subject: {subject}")
         
         if not initial_message:
             return Response({'error': 'Message is required'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Check if conversation already exists
-        existing_conversation = Conversation.objects.filter(
-            participants=request.user
-        ).filter(participants=admin_user).first()
-        print(f"DEBUG: Existing conversation: {existing_conversation}")
-
-        if existing_conversation:
-            # Send message to existing conversation
-            message = Message.objects.create(
-                conversation=existing_conversation,
-                sender=request.user,
-                receiver=admin_user,
-                content=initial_message,
-                message_type='text'
-            )
-            existing_conversation.last_message = message
-            existing_conversation.save()
-            existing_conversation.set_unread_count(admin_user, existing_conversation.get_unread_count(admin_user) + 1)
-            existing_conversation.save()
-            print(f"DEBUG: Added message to existing conversation: {message.id}")
-            
-            return Response(
-                MessageSerializer(message, context={'request': request}).data,
-                status=status.HTTP_201_CREATED
-            )
-
-        # Create new conversation with admin
-        conversation = Conversation.objects.create()
+        # Always create a new conversation for each new message with subject
+        # This ensures separate conversations for different topics
+        conversation = Conversation.objects.create(subject=subject)
         conversation.participants.add(request.user, admin_user)
-        print(f"DEBUG: Created new conversation: {conversation.id}")
+        print(f"DEBUG: Created new conversation: {conversation.id} with subject: {subject}")
 
         # Send initial message
         message = Message.objects.create(
@@ -642,10 +617,10 @@ def create_admin_conversation_view(request):
         conversation.save()
         print(f"DEBUG: Updated conversation with message and unread count")
 
-        return Response(
-            MessageSerializer(message, context={'request': request}).data,
-            status=status.HTTP_201_CREATED
-        )
+        return Response({
+            'conversation_id': conversation.id,
+            'message': MessageSerializer(message, context={'request': request}).data
+        }, status=status.HTTP_201_CREATED)
     except Exception as e:
         import traceback
         print(f"Error in create_admin_conversation_view: {e}")
@@ -656,27 +631,35 @@ def create_admin_conversation_view(request):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def get_admin_conversation_view(request):
-    """Get conversation with admin"""
+    """Get all conversations with admin for this user"""
     try:
         admin_user = User.objects.filter(is_staff=True, is_superuser=True).first()
         if not admin_user:
             return Response({'error': 'Admin user not found'}, status=status.HTTP_404_NOT_FOUND)
         
-        conversation = Conversation.objects.filter(
+        # Get all conversations between this user and admin
+        conversations = Conversation.objects.filter(
             participants=request.user
-        ).filter(participants=admin_user).first()
+        ).filter(participants=admin_user).order_by('-updated_at')
         
-        if not conversation:
-            return Response({'conversation': None, 'messages': []}, status=status.HTTP_200_OK)
+        if not conversations.exists():
+            return Response({'conversations': [], 'messages': []}, status=status.HTTP_200_OK)
         
-        messages = Message.objects.filter(
-            conversation=conversation,
-            deleted_at__isnull=True
-        ).order_by('timestamp')
+        # Return all conversations with their data
+        conversation_data = []
+        for conv in conversations:
+            conversation_data.append({
+                'id': conv.id,
+                'subject': conv.subject,
+                'last_message': {
+                    'content': conv.last_message.content if conv.last_message else '',
+                    'timestamp': conv.last_message.timestamp.isoformat() if conv.last_message else ''
+                } if conv.last_message else None,
+                'updated_at': conv.updated_at.isoformat()
+            })
         
         return Response({
-            'conversation': ConversationSerializer(conversation, context={'request': request}).data,
-            'messages': MessageSerializer(messages, many=True, context={'request': request}).data
+            'conversations': conversation_data
         }, status=status.HTTP_200_OK)
     except Exception as e:
         print(f"Error in get_admin_conversation_view: {e}")
@@ -686,7 +669,7 @@ def get_admin_conversation_view(request):
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def admin_conversations_view(request):
-    """Get only admin support conversations"""
+    """Get admin support conversations - accessible by both admin users and owners"""
     try:
         user = request.user
         print(f"DEBUG: admin_conversations_view - User {user.id} ({user.username}) is_staff: {getattr(user, 'is_staff', False)} is_superuser: {getattr(user, 'is_superuser', False)}")
@@ -696,19 +679,25 @@ def admin_conversations_view(request):
         if not admin_user:
             return Response({'error': 'Admin user not found'}, status=status.HTTP_404_NOT_FOUND)
         
-        # Get conversations where admin is participant and other participant is owner/single_owner
-        conversations = Conversation.objects.filter(
-            participants=admin_user
-        ).filter(
-            participants__role__in=['owner', 'single_owner']
-        ).distinct().order_by('-updated_at')
+        # If user is admin, show all admin support conversations
+        if getattr(user, 'is_staff', False) and getattr(user, 'is_superuser', False):
+            conversations = Conversation.objects.filter(
+                participants=admin_user
+            ).filter(
+                participants__role__in=['owner', 'single_owner']
+            ).distinct().order_by('-updated_at')
+        else:
+            # If user is owner, show only their conversations with admin
+            conversations = Conversation.objects.filter(
+                participants=user
+            ).filter(
+                participants=admin_user
+            ).distinct().order_by('-updated_at')
         
-        print(f"DEBUG: Found {conversations.count()} admin support conversations")
+        print(f"DEBUG: Found {conversations.count()} conversations")
         for conv in conversations:
             participants = conv.participants.all()
-            owner_participants = participants.filter(role__in=['owner', 'single_owner'])
             print(f"DEBUG: Conversation {conv.id} participants: {[p.username for p in participants]}")
-            print(f"DEBUG: Conversation {conv.id} owner participants: {[p.username for p in owner_participants]}")
         
         serializer = ConversationSerializer(conversations, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
