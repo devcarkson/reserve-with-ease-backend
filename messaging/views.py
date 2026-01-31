@@ -560,6 +560,28 @@ def update_conversation_settings_view(request, conversation_id):
 
 @api_view(['DELETE'])
 @permission_classes([permissions.IsAuthenticated])
+def delete_conversation_permanently_view(request, conversation_id):
+    """Permanently delete conversation (admin only)"""
+    try:
+        conversation = Conversation.objects.get(id=conversation_id)
+    except Conversation.DoesNotExist:
+        return Response({'error': 'Conversation not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Only allow admin users to permanently delete conversations
+    if not (getattr(request.user, 'is_staff', False) and getattr(request.user, 'is_superuser', False)):
+        return Response({'error': 'Admin access required'}, status=status.HTTP_403_FORBIDDEN)
+    
+    # Delete all messages in the conversation
+    Message.objects.filter(conversation=conversation).delete()
+    
+    # Delete the conversation
+    conversation.delete()
+    
+    return Response({'message': 'Conversation permanently deleted'}, status=status.HTTP_200_OK)
+
+
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
 def delete_conversation_view(request, conversation_id):
     """Delete conversation for user (archive)"""
     try:
