@@ -129,7 +129,7 @@ class MessageListView(generics.ListAPIView):
     def get_queryset(self):
         user = self.request.user
         conversation_id = self.kwargs['conversation_id']
-        print(f"DEBUG: MessageListView - User {user.id} accessing conversation {conversation_id}")
+        print(f"DEBUG: MessageListView - User {user.id} ({user.username}) accessing conversation {conversation_id}")
         
         # Ensure the requester is a participant OR is admin accessing admin support conversation
         try:
@@ -148,12 +148,13 @@ class MessageListView(generics.ListAPIView):
         # Check if user is admin and this is an admin support conversation
         admin_user = User.objects.filter(is_staff=True, is_superuser=True).first()
         if admin_user and conv.participants.filter(id=admin_user.id).exists():
-            print(f"DEBUG: Admin support conversation access granted")
+            print(f"DEBUG: Admin support conversation access granted for user {user.id}")
             return Message.objects.filter(
                 conversation_id=conversation_id,
                 deleted_at__isnull=True
             )
         
+        print(f"DEBUG: Access denied for user {user.id} - not participant and not admin support conversation")
         from rest_framework.exceptions import PermissionDenied
         raise PermissionDenied("Not a participant of this conversation")
 
@@ -374,17 +375,22 @@ def stream_messages_view(request, conversation_id):
       - event: error for errors
     """
     # Try to authenticate via session first; if not authenticated and a token is provided, attempt JWT auth
+    print(f"SSE AUTH DEBUG: request.user={request.user}, is_authenticated={getattr(request.user, 'is_authenticated', False)}")
+    
     if not request.user or not request.user.is_authenticated:
         token = request.GET.get('token')
+        print(f"SSE AUTH DEBUG: token from query params={'present' if token else 'missing'}")
         if token:
             try:
                 from rest_framework_simplejwt.authentication import JWTAuthentication
                 jwt_auth = JWTAuthentication()
                 validated_token = jwt_auth.get_validated_token(token)
                 user = jwt_auth.get_user(validated_token)
+                print(f"SSE AUTH DEBUG: JWT auth successful, user_id={user.id}, is_staff={user.is_staff}, is_superuser={user.is_superuser}")
                 # attach user to request for downstream checks
                 request.user = user
-            except Exception:
+            except Exception as e:
+                print(f"SSE AUTH DEBUG: JWT auth failed: {e}")
                 payload = {"error": "Invalid token"}
                 return StreamingHttpResponse(
                     f"event: error\ndata: {json.dumps(payload)}\n\n",
@@ -402,12 +408,25 @@ def stream_messages_view(request, conversation_id):
             content_type='text/event-stream'
         )
 
-    if not conversation.participants.filter(id=request.user.id).exists():
+    # Check if user is participant OR is admin accessing admin support conversation
+    is_participant = conversation.participants.filter(id=request.user.id).exists()
+    is_admin_user = getattr(request.user, 'is_staff', False) and getattr(request.user, 'is_superuser', False)
+    admin_user = User.objects.filter(is_staff=True, is_superuser=True).first()
+    is_admin_conversation = admin_user and conversation.participants.filter(id=admin_user.id).exists()
+    
+    # Debug logging - use print for immediate visibility
+    print(f"SSE DEBUG: user_id={request.user.id}, is_staff={getattr(request.user, 'is_staff', False)}, is_superuser={getattr(request.user, 'is_superuser', False)}, is_participant={is_participant}, is_admin_user={is_admin_user}, is_admin_conversation={is_admin_conversation}, admin_user={admin_user}")
+    
+    # Allow access if: user is a participant, OR user is admin accessing an admin conversation
+    if not (is_participant or (is_admin_user and is_admin_conversation)):
+        print(f"SSE DEBUG: Access DENIED for user {request.user.id}")
         payload = {"error": "Access denied"}
         return StreamingHttpResponse(
             f"event: error\ndata: {json.dumps(payload)}\n\n",
             content_type='text/event-stream'
         )
+    else:
+        print(f"SSE DEBUG: Access GRANTED for user {request.user.id}")
 
     def event_generator():
         import time
@@ -670,7 +689,7 @@ def admin_conversations_view(request):
     """Get only admin support conversations"""
     try:
         user = request.user
-        print(f"DEBUG: admin_conversations_view - User {user.id} is_staff: {getattr(user, 'is_staff', False)} is_superuser: {getattr(user, 'is_superuser', False)}")
+        print(f"DEBUG: admin_conversations_view - User {user.id} ({user.username}) is_staff: {getattr(user, 'is_staff', False)} is_superuser: {getattr(user, 'is_superuser', False)}")
         
         # Find admin user
         admin_user = User.objects.filter(is_staff=True, is_superuser=True).first()
@@ -685,37 +704,17 @@ def admin_conversations_view(request):
         ).distinct().order_by('-updated_at')
         
         print(f"DEBUG: Found {conversations.count()} admin support conversations")
+        for conv in conversations:
+            participants = conv.participants.all()
+            owner_participants = participants.filter(role__in=['owner', 'single_owner'])
+            print(f"DEBUG: Conversation {conv.id} participants: {[p.username for p in participants]}")
+            print(f"DEBUG: Conversation {conv.id} owner participants: {[p.username for p in owner_participants]}")
         
         serializer = ConversationSerializer(conversations, many=True, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
         
     except Exception as e:
         print(f"Error in admin_conversations_view: {e}")
-        return Response({'error': str(e)}, status=500)
-    """Get conversation with admin"""
-    try:
-        admin_user = User.objects.filter(is_staff=True, is_superuser=True).first()
-        if not admin_user:
-            return Response({'error': 'Admin user not found'}, status=status.HTTP_404_NOT_FOUND)
-        
-        conversation = Conversation.objects.filter(
-            participants=request.user
-        ).filter(participants=admin_user).first()
-        
-        if not conversation:
-            return Response({'conversation': None, 'messages': []}, status=status.HTTP_200_OK)
-        
-        messages = Message.objects.filter(
-            conversation=conversation,
-            deleted_at__isnull=True
-        ).order_by('timestamp')
-        
-        return Response({
-            'conversation': ConversationSerializer(conversation, context={'request': request}).data,
-            'messages': MessageSerializer(messages, many=True, context={'request': request}).data
-        }, status=status.HTTP_200_OK)
-    except Exception as e:
-        print(f"Error in get_admin_conversation_view: {e}")
         return Response({'error': str(e)}, status=500)
 
 
@@ -774,4 +773,3 @@ def send_message_view(request, conversation_id):
         MessageSerializer(message).data,
         status=status.HTTP_201_CREATED
     )
-

@@ -14,8 +14,15 @@ from .models import Conversation, Message
 User = get_user_model()
 
 def authenticate_token(request):
-    """Authenticate user from token parameter"""
-    token = request.GET.get('token')
+    """Authenticate user from token parameter or Authorization header"""
+    # Try Authorization header first
+    auth_header = request.META.get('HTTP_AUTHORIZATION')
+    if auth_header and auth_header.startswith('Bearer '):
+        token = auth_header.split(' ')[1]
+    else:
+        # Fallback to query parameter
+        token = request.GET.get('token')
+    
     if not token:
         return None
     
@@ -41,6 +48,7 @@ def message_stream(request, conversation_id):
     
     # Authenticate user
     user = authenticate_token(request)
+    print(f"DEBUG: SSE - Authenticated user: {user.id if user else None} ({user.username if user else 'None'}) is_staff: {getattr(user, 'is_staff', False) if user else False} is_superuser: {getattr(user, 'is_superuser', False) if user else False}")
     if not user:
         response = StreamingHttpResponse(
             'data: {"error": "Authentication required"}\n\n',
@@ -53,7 +61,18 @@ def message_stream(request, conversation_id):
     # Check conversation access
     try:
         conversation = Conversation.objects.get(id=conversation_id)
-        if not conversation.participants.filter(id=user.id).exists():
+        print(f"DEBUG: SSE - Conversation {conversation_id} participants: {[p.id for p in conversation.participants.all()]}")
+        
+        # Check if user is participant
+        if conversation.participants.filter(id=user.id).exists():
+            print(f"DEBUG: SSE - User {user.id} is participant, access granted")
+            pass  # Access granted
+        # Check if user is admin - allow access to any conversation for admin users
+        elif getattr(user, 'is_staff', False) and getattr(user, 'is_superuser', False):
+            print(f"DEBUG: SSE - User {user.id} is admin, access granted")
+            pass  # Admin access granted
+        else:
+            print(f"DEBUG: SSE - Access denied for user {user.id} - not participant and not admin")
             response = StreamingHttpResponse(
                 'data: {"error": "Access denied"}\n\n',
                 content_type='text/event-stream',
