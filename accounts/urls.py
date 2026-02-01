@@ -15,4 +15,12 @@ urlpatterns = [
     path('verify-email/<str:token>/', views.verify_email_view, name='verify_email'),
     path('request-owner-invitation/', views.request_owner_invitation_view, name='request_owner_invitation'),
     path('resend-verification/', views.resend_verification_email_view, name='resend_verification'),
+    
+    # Two-Factor Authentication URLs
+    path('2fa/generate-secret/', views.generate_2fa_secret_view, name='generate_2fa_secret'),
+    path('2fa/setup/', views.setup_2fa_view, name='setup_2fa'),
+    path('2fa/verify/', views.verify_2fa_view, name='verify_2fa'),
+    path('2fa/status/', views.get_2fa_status_view, name='get_2fa_status'),
+    path('2fa/disable/', views.disable_2fa_view, name='disable_2fa'),
+    path('2fa/regenerate-backup-codes/', views.regenerate_backup_codes_view, name='regenerate_backup_codes'),
 ]

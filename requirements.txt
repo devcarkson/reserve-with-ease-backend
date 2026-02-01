@@ -43,3 +43,7 @@ uritemplate
 vine
 wcwidth
 whitenoise 
+django-otp
+qrcode
+pillow
+pyotp

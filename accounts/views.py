@@ -13,7 +13,8 @@ from .models import EmailVerification, PasswordReset
 from .serializers import (
     UserRegistrationSerializer, UserLoginSerializer, UserSerializer,
     UserUpdateSerializer, PasswordChangeSerializer, PasswordResetSerializer,
-    EmailVerificationSerializer
+    EmailVerificationSerializer, TwoFactorSetupSerializer, TwoFactorVerifySerializer,
+    TwoFactorDisableSerializer, TwoFactorRegenerateBackupCodesSerializer
 )
 
 # Import DEBUG from settings for error handling
@@ -201,7 +202,20 @@ def login_view(request):
     print("User authenticated:", user)
     print("User email:", user.email)
     print("User username:", user.username)
+    print("User 2FA enabled:", user.two_factor_enabled)
 
+    # Check if 2FA is enabled
+    if user.two_factor_enabled:
+        print("2FA is enabled, returning user info without tokens")
+        response_data = {
+            'user': UserSerializer(user).data,
+            'message': '2FA verification required'
+        }
+        print("Returning 2FA required response:", response_data)
+        print("=== LOGIN DEBUG END ===")
+        return Response(response_data, status=status.HTTP_200_OK)
+
+    # If 2FA is not enabled, generate tokens normally
     refresh = RefreshToken.for_user(user)
     print("Tokens generated successfully")
 
@@ -469,3 +483,110 @@ def resend_verification_email_view(request):
         pass
 
     return Response({'message': 'Verification email sent'}, status=status.HTTP_200_OK)
+
+
+# Two-Factor Authentication Views
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def generate_2fa_secret_view(request):
+    """Generate a new 2FA secret and QR code for the user"""
+    user = request.user
+    
+    # Generate new secret
+    secret = user.generate_2fa_secret()
+    
+    # Generate QR code
+    qr_code = user.get_2fa_qr_code(secret)
+    
+    return Response({
+        'secret': secret,
+        'qr_code': qr_code,
+        'message': '2FA secret generated. Please scan the QR code with Google Authenticator and verify with the code.'
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def setup_2fa_view(request):
+    """Enable 2FA after verifying the token"""
+    serializer = TwoFactorSetupSerializer(data=request.data, context={'request': request})
+    serializer.is_valid(raise_exception=True)
+    
+    result = serializer.save()
+    
+    return Response(result, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def verify_2fa_view(request):
+    """Verify 2FA token during login"""
+    email = request.data.get('email')
+    password = request.data.get('password')
+    
+    if not email or not password:
+        return Response({'error': 'Email and password are required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        user = User.objects.get(email__iexact=email)
+    except User.DoesNotExist:
+        return Response({'error': 'Invalid credentials'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not user.check_password(password):
+        return Response({'error': 'Invalid credentials'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not user.two_factor_enabled:
+        return Response({'error': '2FA is not enabled for this account'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    serializer = TwoFactorVerifySerializer(data=request.data, context={'user': user})
+    serializer.is_valid(raise_exception=True)
+    
+    # Generate JWT tokens after successful 2FA verification
+    refresh = RefreshToken.for_user(user)
+    
+    return Response({
+        'user': UserSerializer(user).data,
+        'tokens': {
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+        },
+        'message': '2FA verification successful'
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_2fa_status_view(request):
+    """Get current 2FA status for the user"""
+    user = request.user
+    
+    return Response({
+        'two_factor_enabled': user.two_factor_enabled,
+        'has_backup_codes': len(user.two_factor_backup_codes) > 0 if user.two_factor_backup_codes else False,
+        'backup_codes_count': len(user.two_factor_backup_codes) if user.two_factor_backup_codes else 0,
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def disable_2fa_view(request):
+    """Disable 2FA for the user"""
+    serializer = TwoFactorDisableSerializer(data=request.data, context={'request': request})
+    serializer.is_valid(raise_exception=True)
+    
+    result = serializer.save()
+    
+    return Response(result, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def regenerate_backup_codes_view(request):
+    """Regenerate backup codes for 2FA"""
+    serializer = TwoFactorRegenerateBackupCodesSerializer(data=request.data, context={'request': request})
+    serializer.is_valid(raise_exception=True)
+    
+    result = serializer.save()
+    
+    return Response(result, status=status.HTTP_200_OK)

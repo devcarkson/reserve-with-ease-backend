@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "drf_yasg",
     "django_filters",
+    "django_otp",
 
     # Local apps
     "accounts",
@@ -302,3 +303,8 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     X_FRAME_OPTIONS = 'DENY'
+
+# OTP/2FA Settings
+OTP_TOTP_ISSUER = 'ReserveWithEase'
+OTP_TOTP_DIGITS = 6
+OTP_TOTP_STEP = 30

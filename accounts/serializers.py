@@ -179,8 +179,9 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = ('id', 'username', 'email', 'first_name', 'last_name', 'phone',
                   'role', 'status', 'email_verified', 'profile_picture',
-                  'created_at', 'updated_at', 'profile', 'owner_type')
-        read_only_fields = ('id', 'created_at', 'updated_at', 'email_verified')
+                  'created_at', 'updated_at', 'profile', 'owner_type',
+                  'two_factor_enabled')
+        read_only_fields = ('id', 'created_at', 'updated_at', 'email_verified', 'two_factor_enabled')
 
     def get_profile(self, obj):
         try:
@@ -260,3 +261,94 @@ class EmailVerificationSerializer(serializers.ModelSerializer):
         model = EmailVerification
         fields = ('token', 'created_at', 'is_used', 'email', 'invitation_type')
         read_only_fields = ('token', 'created_at', 'is_used')
+
+
+class TwoFactorSetupSerializer(serializers.Serializer):
+    """Serializer for setting up 2FA"""
+    token = serializers.CharField(max_length=6, min_length=6, required=True)
+    
+    def validate_token(self, value):
+        user = self.context['request'].user
+        if not user.two_factor_secret:
+            raise serializers.ValidationError("2FA not set up. Please generate a secret first.")
+        
+        if not user.verify_2fa_token(value):
+            raise serializers.ValidationError("Invalid verification code")
+        
+        return value
+    
+    def save(self):
+        user = self.context['request'].user
+        user.two_factor_enabled = True
+        user.save()
+        
+        # Generate backup codes after successful 2FA setup
+        backup_codes = user.generate_backup_codes()
+        
+        return {
+            'message': '2FA enabled successfully',
+            'backup_codes': backup_codes
+        }
+
+
+class TwoFactorVerifySerializer(serializers.Serializer):
+    """Serializer for verifying 2FA during login"""
+    token = serializers.CharField(max_length=6, min_length=6, required=False)
+    backup_code = serializers.CharField(max_length=6, min_length=6, required=False)
+    
+    def validate(self, attrs):
+        user = self.context['user']
+        
+        token = attrs.get('token')
+        backup_code = attrs.get('backup_code')
+        
+        if not token and not backup_code:
+            raise serializers.ValidationError("Either 2FA token or backup code is required")
+        
+        if token and not user.verify_2fa_token(token):
+            raise serializers.ValidationError("Invalid 2FA token")
+        
+        if backup_code and not user.verify_backup_code(backup_code):
+            raise serializers.ValidationError("Invalid backup code")
+        
+        return attrs
+
+
+class TwoFactorDisableSerializer(serializers.Serializer):
+    """Serializer for disabling 2FA"""
+    password = serializers.CharField(required=True)
+    
+    def validate_password(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Incorrect password")
+        return value
+    
+    def save(self):
+        user = self.context['request'].user
+        user.two_factor_enabled = False
+        user.two_factor_secret = None
+        user.two_factor_backup_codes = []
+        user.save()
+        
+        return {'message': '2FA disabled successfully'}
+
+
+class TwoFactorRegenerateBackupCodesSerializer(serializers.Serializer):
+    """Serializer for regenerating backup codes"""
+    password = serializers.CharField(required=True)
+    
+    def validate_password(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Incorrect password")
+        return value
+    
+    def save(self):
+        user = self.context['request'].user
+        backup_codes = user.generate_backup_codes()
+        
+        return {
+            'message': 'Backup codes regenerated successfully',
+            'backup_codes': backup_codes
+        }
