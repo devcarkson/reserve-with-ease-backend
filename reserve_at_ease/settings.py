@@ -223,6 +223,7 @@ EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
 EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@example.com')
+ADMIN_EMAIL = config('ADMIN_EMAIL', default='decarkson@gmail.com')
 
 # AWS S3 Configuration (for production)
 USE_S3 = config('USE_S3', default=False, cast=bool)

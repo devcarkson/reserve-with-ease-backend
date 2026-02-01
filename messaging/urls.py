@@ -22,4 +22,5 @@ urlpatterns = [
     path('conversations/<int:conversation_id>/stream/', message_stream, name='message-stream'),
     path('conversations/<int:conversation_id>/archive/', views.delete_conversation_view, name='archive-conversation'),
     path('conversations/<int:conversation_id>/delete/', views.delete_conversation_permanently_view, name='delete-conversation'),
+    path('help-center/contact/', views.help_center_contact_view, name='help-center-contact'),
 ]

@@ -730,8 +730,109 @@ def admin_conversations_view(request):
 
 
 @api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def help_center_contact_view(request):
+    """Handle help center contact form submissions"""
+    try:
+        from .models import HelpContact
+        
+        name = request.data.get('name')
+        email = request.data.get('email')
+        subject = request.data.get('subject')
+        message = request.data.get('message')
+        
+        if not all([name, email, subject, message]):
+            return Response({'error': 'All fields are required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Save to database
+        HelpContact.objects.create(
+            name=name,
+            email=email,
+            subject=subject,
+            message=message
+        )
+        
+        # Send email notification to admin
+        try:
+            from django.core.mail import send_mail
+            from django.conf import settings
+            
+            admin_email = getattr(settings, 'ADMIN_EMAIL', 'admin@reservewithease.com')
+            
+            send_mail(
+                subject=f'New Help Center Contact: {subject}',
+                message=f'New contact form submission from {name} ({email}):\n\n{message}',
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[admin_email],
+                fail_silently=True,
+            )
+        except Exception as e:
+            print(f"Failed to send email notification: {e}")
+        
+        return Response({
+            'message': 'Contact form submitted successfully'
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        print(f"Error in help_center_contact_view: {e}")
+        return Response({'error': str(e)}, status=500)
+
+
+@api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def send_message_view(request, conversation_id):
+    """Send a message in a conversation"""
+    try:
+        conversation = Conversation.objects.get(id=conversation_id)
+    except Conversation.DoesNotExist:
+        return Response({'error': 'Conversation not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    # Check if user is participant OR admin accessing admin support conversation
+    is_participant = conversation.participants.filter(id=request.user.id).exists()
+    admin_user = User.objects.filter(is_staff=True, is_superuser=True).first()
+    is_admin_conversation = admin_user and conversation.participants.filter(id=admin_user.id).exists()
+    
+    if not (is_participant or is_admin_conversation):
+        return Response({'error': 'Access denied'}, status=status.HTTP_403_FORBIDDEN)
+
+    content = request.data.get('content')
+    if not content:
+        return Response({'error': 'Message content is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Get other participant - if admin conversation, get the owner
+    if is_admin_conversation and not is_participant:
+        # Current user is admin, get the owner participant
+        other_participant = conversation.participants.exclude(id=admin_user.id).first()
+        sender = admin_user  # Admin sends the message
+    else:
+        # Regular participant flow
+        other_participant = conversation.participants.exclude(id=request.user.id).first()
+        sender = request.user
+        
+    if not other_participant:
+        return Response({'error': 'Conversation has no other participants'}, status=status.HTTP_400_BAD_REQUEST)
+
+    message = Message.objects.create(
+        conversation=conversation,
+        sender=sender,
+        receiver=other_participant,
+        content=content,
+        message_type=request.data.get('message_type', 'text')
+    )
+
+    # Update conversation
+    conversation.last_message = message
+    conversation.save()
+
+    # Update unread count
+    current_unread = conversation.get_unread_count(other_participant)
+    conversation.set_unread_count(other_participant, current_unread + 1)
+    conversation.save()
+
+    return Response(
+        MessageSerializer(message).data,
+        status=status.HTTP_201_CREATED
+    )
     """Send a message in a conversation"""
     try:
         conversation = Conversation.objects.get(id=conversation_id)

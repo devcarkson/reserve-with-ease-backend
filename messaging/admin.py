@@ -1,5 +1,12 @@
 from django.contrib import admin
-from .models import Conversation, Message, MessageAttachment, MessageReaction, ConversationSettings, MessageReport
+from .models import Conversation, Message, MessageAttachment, MessageReaction, ConversationSettings, MessageReport, HelpContact
+
+@admin.register(HelpContact)
+class HelpContactAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'email', 'subject', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('name', 'email', 'subject')
+    readonly_fields = ('created_at',)
 
 @admin.register(Conversation)
 class ConversationAdmin(admin.ModelAdmin):
