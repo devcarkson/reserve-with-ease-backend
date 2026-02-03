@@ -18,4 +18,5 @@ urlpatterns = [
     path('<str:reservation_ref>/upload-receipt/', views.upload_payment_receipt_view, name='upload-receipt'),
     path('<int:reservation_id>/approve-payment/', views.approve_payment_view, name='approve-payment'),
     path('check-availability/', views.check_availability_view, name='check-availability'),
+    path('performance-stats/', views.performance_stats_view, name='performance-stats'),
 ]

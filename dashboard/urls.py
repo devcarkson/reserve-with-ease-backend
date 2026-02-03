@@ -13,6 +13,12 @@ urlpatterns = [
     # Admin Dashboard
     path('admin/', views.admin_dashboard_view, name='admin-dashboard'),
 
+    # Performance Overview
+    path('performance/overview/', views.performance_overview_view, name='performance-overview'),
+
+    # Reservation Performance
+    path('performance/reservations/', views.reservation_performance_view, name='reservation-performance'),
+
     # User Activity
     path('activity/', views.user_activity_view, name='user-activity'),
 
