@@ -36,6 +36,16 @@ USE_RELOADER = config('USE_RELOADER', default=False, cast=bool)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=lambda v: [s.strip() for s in v.split(',')])
 
+# CORS Settings for Cloudflare R2
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:8080",
+    "https://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://127.0.0.1:8081",
+    "https://974dd2fd587f660b7a5b75ca1057b741.r2.cloudflarestorage.com",
+    "https://pub-55e6e691913e44f98f71163828507001.r2.dev",
+]
 
 # Application definition
 
@@ -54,6 +64,7 @@ INSTALLED_APPS = [
     "drf_yasg",
     "django_filters",
     "django_otp",
+    "storages", z
 
     # Local apps
     "accounts",
@@ -148,8 +159,20 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-MEDIA_URL = "/media/"
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Cloudflare R2 Configuration
+AWS_ACCESS_KEY_ID = config('R2_ACCESS_KEY_ID', default='')
+AWS_SECRET_ACCESS_KEY = config('R2_SECRET_ACCESS_KEY', default='')
+AWS_STORAGE_BUCKET_NAME = config('R2_BUCKET_NAME', default='reserve-with-ease-media')
+AWS_S3_ENDPOINT_URL = config('R2_ENDPOINT_URL', default='https://974dd2fd587f660b7a5b75ca1057b741.r2.cloudflarestorage.com')
+AWS_S3_REGION_NAME = config('R2_REGION', default='weur')
+
+# R2 Public URL for serving files
+R2_PUBLIC_URL = 'https://pub-55e6e691913e44f98f71163828507001.r2.dev'
+
+# Use R2 for media files
+MEDIA_URL = f"https://{AWS_STORAGE_BUCKET_NAME}.{AWS_S3_ENDPOINT_URL.replace('https://', '')}/"
+DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
