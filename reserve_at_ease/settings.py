@@ -64,7 +64,7 @@ INSTALLED_APPS = [
     "drf_yasg",
     "django_filters",
     "django_otp",
-    "storages", z
+    "storages", 
 
     # Local apps
     "accounts",
