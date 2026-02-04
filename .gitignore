@@ -11,7 +11,8 @@
 *.log
 local_settings.py
 staticfiles/
-# media/
+media/
+media.zip
 
 # Cache
 .DS_Store
