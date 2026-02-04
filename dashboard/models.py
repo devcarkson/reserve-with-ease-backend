@@ -35,6 +35,8 @@ class OwnerDashboardStats(models.Model):
     cancelled_reservations = models.IntegerField(default=0)
     total_revenue = models.DecimalField(max_digits=15, decimal_places=2, default=0)
     monthly_revenue = models.DecimalField(max_digits=15, decimal_places=2, default=0)
+    revenue_change_percentage = models.FloatField(default=0)
+    reservation_change_percentage = models.FloatField(default=0)
     average_rating = models.FloatField(default=0)
     total_reviews = models.IntegerField(default=0)
     occupancy_rate = models.FloatField(default=0)

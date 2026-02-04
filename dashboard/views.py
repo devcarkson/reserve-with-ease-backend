@@ -166,6 +166,44 @@ def owner_dashboard_view(request):
             created_at__date__gte=thirty_days_ago
         ).aggregate(total=Sum('total_price'))['total']
         stats.monthly_revenue = monthly_revenue if monthly_revenue is not None else 0
+        
+        # Calculate revenue change percentage (compared to previous 30 days)
+        sixty_days_ago = timezone.now().date() - timedelta(days=60)
+        thirty_to_sixty_days_ago = timezone.now().date() - timedelta(days=60)
+        last_month_revenue = reservations.filter(
+            payment_status='paid',
+            created_at__date__gte=thirty_to_sixty_days_ago,
+            created_at__date__lt=thirty_days_ago
+        ).aggregate(total=Sum('total_price'))['total'] or 0
+        
+        if last_month_revenue > 0:
+            revenue_change = ((stats.monthly_revenue - last_month_revenue) / last_month_revenue) * 100
+            stats.revenue_change_percentage = round(revenue_change, 1)
+        else:
+            stats.revenue_change_percentage = 0
+        
+        logger.error(f"Revenue Change Debug - This month: {stats.monthly_revenue}, Last month: {last_month_revenue}, Change: {stats.revenue_change_percentage}%")
+        
+        # Calculate reservation change percentage (compared to previous 30 days)
+        this_month_reservations = reservations.filter(
+            created_at__date__gte=thirty_days_ago
+        ).count()
+        
+        last_month_reservations = reservations.filter(
+            created_at__date__gte=thirty_to_sixty_days_ago,
+            created_at__date__lt=thirty_days_ago
+        ).count()
+        
+        if last_month_reservations > 0:
+            reservation_change = ((this_month_reservations - last_month_reservations) / last_month_reservations) * 100
+            stats.reservation_change_percentage = round(reservation_change, 1)
+        elif this_month_reservations > 0:
+            # New activity - no data for last month
+            stats.reservation_change_percentage = 100.0
+        else:
+            stats.reservation_change_percentage = 0
+        
+        logger.error(f"Reservation Change Debug - This month: {this_month_reservations}, Last month: {last_month_reservations}, Change: {stats.reservation_change_percentage}%")
 
         # Average rating
         avg_rating = properties.aggregate(avg_rating=Avg('rating'))['avg_rating']
