@@ -161,18 +161,43 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 
 # Cloudflare R2 Configuration
-AWS_ACCESS_KEY_ID = config('R2_ACCESS_KEY_ID', default='')
-AWS_SECRET_ACCESS_KEY = config('R2_SECRET_ACCESS_KEY', default='')
-AWS_STORAGE_BUCKET_NAME = config('R2_BUCKET_NAME', default='reserve-with-ease-media')
-AWS_S3_ENDPOINT_URL = config('R2_ENDPOINT_URL', default='https://974dd2fd587f660b7a5b75ca1057b741.r2.cloudflarestorage.com')
-AWS_S3_REGION_NAME = config('R2_REGION', default='weur')
+USE_R2 = config('USE_R2', default=False, cast=bool)
+R2_ACCESS_KEY_ID = config('R2_ACCESS_KEY_ID', default='')
+R2_SECRET_ACCESS_KEY = config('R2_SECRET_ACCESS_KEY', default='')
+R2_BUCKET_NAME = config('R2_BUCKET_NAME', default='reserve-with-ease-media')
+R2_ENDPOINT_URL = config('R2_ENDPOINT_URL', default='https://974dd2fd587f660b7a5b75ca1057b741.r2.cloudflarestorage.com')
+R2_REGION = config('R2_REGION', default='weur')
 
 # R2 Public URL for serving files
 R2_PUBLIC_URL = 'https://pub-55e6e691913e44f98f71163828507001.r2.dev'
 
-# Use R2 for media files with public URL
-MEDIA_URL = f"{R2_PUBLIC_URL}/"
-DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+if USE_R2:
+    # Configure R2 as S3-compatible storage
+    AWS_ACCESS_KEY_ID = R2_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY = R2_SECRET_ACCESS_KEY
+    AWS_STORAGE_BUCKET_NAME = R2_BUCKET_NAME
+    AWS_S3_ENDPOINT_URL = R2_ENDPOINT_URL
+    AWS_S3_REGION_NAME = R2_REGION
+    AWS_DEFAULT_ACL = 'public-read'
+    AWS_S3_OBJECT_PARAMETERS = {
+        'CacheControl': 'max-age=86400',
+    }
+    
+    # Use R2 for media files
+    MEDIA_URL = f"{R2_PUBLIC_URL}/"
+    MEDIA_ROOT = 'media/'
+    DEFAULT_FILE_STORAGE = 'reserve_at_ease.custom_storage.R2Storage'
+    
+    # Additional S3 settings for R2
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_S3_USE_SSL = True
+    AWS_QUERYSTRING_AUTH = False
+    AWS_S3_CUSTOM_DOMAIN = R2_PUBLIC_URL
+else:
+    # Use local storage for development
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+    DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

@@ -17,6 +17,15 @@ from .serializers import (
     TwoFactorDisableSerializer, TwoFactorRegenerateBackupCodesSerializer
 )
 
+# Import R2 storage
+from reserve_at_ease.custom_storage import R2Storage
+
+# Use R2 storage if enabled
+if settings.USE_R2:
+    r2_storage = R2Storage()
+else:
+    r2_storage = None
+
 # Import DEBUG from settings for error handling
 DEBUG = settings.DEBUG
 
@@ -265,6 +274,7 @@ def token_refresh_view(request):
 class UserProfileView(generics.RetrieveUpdateAPIView):
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
 
     def get_object(self):
         return self.request.user
@@ -273,6 +283,23 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         if self.request.method == 'PUT' or self.request.method == 'PATCH':
             return UserUpdateSerializer
         return UserSerializer
+    
+    def update(self, request, *args, **kwargs):
+        print("=== PROFILE UPDATE DEBUG ===")
+        print(f"Request method: {request.method}")
+        print(f"Request content type: {request.content_type}")
+        print(f"Request data: {request.data}")
+        print(f"Request FILES: {request.FILES}")
+        
+        try:
+            response = super().update(request, *args, **kwargs)
+            print("✅ Profile update successful")
+            return response
+        except Exception as e:
+            print(f"❌ Profile update error: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
 
 
 @api_view(['POST'])

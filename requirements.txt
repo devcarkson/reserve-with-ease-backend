@@ -47,3 +47,4 @@ django-otp
 qrcode
 pillow
 pyotp
+boto3

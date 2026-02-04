@@ -120,14 +120,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             try:
                 from properties.models import Property
                 property_obj = Property.objects.get(id=property_id)
-                # Set created_by to original owner if not set
-                if not property_obj.created_by:
-                    property_obj.created_by = property_obj.owner
-                property_obj.owner = user
-                property_obj.save()
-                print(f"Property {property_id} assigned to user {user.id}")
+                # Add single owner to authorized_users instead of changing ownership
+                # This preserves the multi-owner's profile for the single owner
+                property_obj.authorized_users.add(user)
+                print(f"Property {property_id} authorized for user {user.id}")
             except Exception as e:
-                print(f"Failed to assign property {property_id} to user {user.id}: {e}")
+                print(f"Failed to authorize property {property_id} for user {user.id}: {e}")
                 # Don't fail registration if property assignment fails
 
         print("=== END SERIALIZER CREATE DEBUG ===")
@@ -184,6 +182,23 @@ class UserSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'created_at', 'updated_at', 'email_verified', 'two_factor_enabled')
 
     def get_profile(self, obj):
+        # For single owners, return the multi-owner's profile from the property
+        if obj.owner_type == 'single':
+            try:
+                from properties.models import Property
+                # Find the property where this user is an authorized user
+                property_obj = Property.objects.filter(authorized_users=obj).first()
+                if property_obj and property_obj.owner:
+                    # Return the multi-owner's profile
+                    multi_owner = property_obj.owner
+                    try:
+                        return UserProfileSerializer(multi_owner.profile).data
+                    except:
+                        return None
+            except Exception as e:
+                print(f"Error getting multi-owner profile for single owner {obj.id}: {e}")
+        
+        # Default behavior for multi owners or users without properties
         try:
             return UserProfileSerializer(obj.profile).data
         except:
@@ -194,11 +209,48 @@ class UserSerializer(serializers.ModelSerializer):
         # Only include owner_type for users with 'owner' role
         if instance.role != 'owner':
             data.pop('owner_type', None)
+        
+        # Convert profile_picture to public R2 URL if R2 is enabled
+        if instance.profile_picture:
+            from django.conf import settings
+            if settings.USE_R2:
+                from properties.utils import convert_image_urls_to_public
+                data['profile_picture'] = convert_image_urls_to_public([instance.profile_picture.name])[0]
+            else:
+                data['profile_picture'] = instance.profile_picture.url
+        
+        # For single owners, override user fields with multi-owner's info (except email)
+        if instance.owner_type == 'single':
+            try:
+                from properties.models import Property
+                # Find the property where this user is an authorized user
+                property_obj = Property.objects.filter(authorized_users=instance).first()
+                if property_obj and property_obj.owner:
+                    multi_owner = property_obj.owner
+                    # Override user-level fields with multi-owner's info (keep own email)
+                    data['first_name'] = multi_owner.first_name
+                    data['last_name'] = multi_owner.last_name
+                    data['phone'] = multi_owner.phone
+                    # Use URL instead of file object for profile_picture
+                    if multi_owner.profile_picture:
+                        from django.conf import settings
+                        if settings.USE_R2:
+                            from properties.utils import convert_image_urls_to_public
+                            data['profile_picture'] = convert_image_urls_to_public([multi_owner.profile_picture.name])[0]
+                        else:
+                            data['profile_picture'] = multi_owner.profile_picture.url
+                    else:
+                        data['profile_picture'] = None
+                    # Profile fields are already overridden in get_profile
+            except Exception as e:
+                print(f"Error overriding single owner fields with multi-owner info: {e}")
+        
         return data
 
 
 class UserUpdateSerializer(serializers.ModelSerializer):
     profile = UserProfileSerializer(required=False)
+    profile_picture = serializers.ImageField(required=False, allow_null=True, allow_empty_file=True)
     
     class Meta:
         model = User
@@ -207,6 +259,57 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         profile_data = validated_data.pop('profile', None)
         
+        # Handle profile_picture upload to R2
+        if 'profile_picture' in validated_data:
+            from django.conf import settings
+            if settings.USE_R2:
+                profile_picture_file = validated_data.pop('profile_picture')
+                if profile_picture_file:
+                    # Import R2 storage
+                    from reserve_at_ease.custom_storage import R2Storage
+                    
+                    r2_storage = R2Storage()
+                    # Save profile picture to R2
+                    try:
+                        profile_picture_path = r2_storage.save(f'profile_pics/{profile_picture_file.name}', profile_picture_file)
+                        validated_data['profile_picture'] = profile_picture_path
+                        print(f"Profile picture saved to R2: {profile_picture_path}")
+                    except Exception as e:
+                        print(f"Error saving to R2: {e}")
+                        # Fall back to local handling if R2 fails
+                        pass
+        
+        # For single owners, update multi-owner's info instead
+        if instance.owner_type == 'single':
+            try:
+                from properties.models import Property
+                property_obj = Property.objects.filter(authorized_users=instance).first()
+                if property_obj and property_obj.owner:
+                    multi_owner = property_obj.owner
+                    # Update multi-owner's user fields
+                    if 'first_name' in validated_data:
+                        multi_owner.first_name = validated_data.pop('first_name')
+                    if 'last_name' in validated_data:
+                        multi_owner.last_name = validated_data.pop('last_name')
+                    if 'phone' in validated_data:
+                        multi_owner.phone = validated_data.pop('phone')
+                    # Handle profile_picture separately if present
+                    if 'profile_picture' in validated_data:
+                        multi_owner.profile_picture = validated_data.pop('profile_picture')
+                    multi_owner.save()
+                    
+                    # Update multi-owner's profile
+                    if profile_data:
+                        multi_profile = multi_owner.profile
+                        for attr, value in profile_data.items():
+                            setattr(multi_profile, attr, value)
+                        multi_profile.save()
+                    
+                    return multi_owner
+            except Exception as e:
+                print(f"Error updating multi-owner profile for single owner: {e}")
+        
+        # Default behavior for multi owners
         # Update user fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)

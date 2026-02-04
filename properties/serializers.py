@@ -7,15 +7,31 @@ User = get_user_model()
 
 
 class PropertyImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+    
     class Meta:
         model = PropertyImage
-        fields = '__all__'
+        fields = ['id', 'property', 'image', 'image_url', 'label', 'is_main', 'order', 'created_at']
+    
+    def get_image_url(self, obj):
+        if obj.image:
+            # Convert to public R2 URL
+            return convert_image_urls_to_public([obj.image.name])[0]
+        return None
 
 
 class RoomImageSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+    
     class Meta:
         model = RoomImage
-        fields = '__all__'
+        fields = ['id', 'room', 'image', 'image_url', 'label', 'is_main', 'order', 'created_at']
+    
+    def get_image_url(self, obj):
+        if obj.image:
+            # Convert to public R2 URL
+            return convert_image_urls_to_public([obj.image.name])[0]
+        return None
 
 
 class PropertyFeatureSerializer(serializers.ModelSerializer):

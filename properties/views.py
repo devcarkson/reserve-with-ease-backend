@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
+from django.core.files.storage import default_storage
 from .utils import optimize_image_upload
 from .models import Property, Room, PropertyImage, RoomImage, PropertyAvailability, RoomAvailability, PropertyFeature, PropertyReviewSummary, RoomCategory
 from .serializers import (
@@ -15,6 +16,16 @@ from .serializers import (
     PropertyAvailabilitySerializer, RoomAvailabilitySerializer, PropertySearchSerializer,
     PropertyImageSerializer, RoomImageSerializer, RoomCategorySerializer, RoomCategoryCreateSerializer
 )
+
+# Import custom R2 storage
+from reserve_at_ease.custom_storage import R2Storage
+
+# Use R2 storage if enabled
+from django.conf import settings
+if settings.USE_R2:
+    r2_storage = R2Storage()
+else:
+    r2_storage = default_storage
 
 User = get_user_model()
 
@@ -376,9 +387,13 @@ def upload_property_image_view(request, property_id):
     if is_main:
         PropertyImage.objects.filter(property=property_obj).update(is_main=False)
 
+    # Save the image using R2 storage
+    image_file = optimized_images['compressed'] or optimized_images['original']
+    image_path = r2_storage.save(f'property_images/{image_file.name}', image_file)
+    
     property_image = PropertyImage.objects.create(
         property=property_obj,
-        image=optimized_images['compressed'] or optimized_images['original'],
+        image=image_path,
         label=label,
         is_main=is_main
     )
@@ -412,9 +427,13 @@ def upload_room_image_view(request, room_id):
     if is_main:
         RoomImage.objects.filter(room=room).update(is_main=False)
 
+    # Save the image using R2 storage
+    image_file = optimized_images['compressed'] or optimized_images['original']
+    image_path = r2_storage.save(f'room_images/{image_file.name}', image_file)
+    
     room_image = RoomImage.objects.create(
         room=room,
-        image=optimized_images['compressed'] or optimized_images['original'],
+        image=image_path,
         label=label,
         is_main=is_main
     )
