@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from .models import Property, Room, PropertyImage, RoomImage, PropertyAvailability, RoomAvailability, PropertyFeature, PropertyReviewSummary, RoomCategory
+from .utils import convert_image_urls_to_public
 
 User = get_user_model()
 
@@ -33,6 +34,13 @@ class RoomSerializer(serializers.ModelSerializer):
     class Meta:
         model = Room
         fields = ['id', 'property', 'room_category', 'name', 'type', 'max_guests', 'bed_type', 'size', 'price_per_night', 'amenities', 'images', 'available', 'created_at', 'updated_at']
+    
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Convert image URLs to public R2 format
+        if 'images' in data and isinstance(data['images'], list):
+            data['images'] = convert_image_urls_to_public(data['images'])
+        return data
 
 
 class PropertySerializer(serializers.ModelSerializer):
@@ -127,6 +135,11 @@ class PropertySerializer(serializers.ModelSerializer):
                         data[field] = []
                 except:
                     data[field] = []
+        
+        # Convert image URLs to public R2 format
+        if 'images' in data and isinstance(data['images'], list):
+            data['images'] = convert_image_urls_to_public(data['images'])
+        
         return data
 
 
@@ -226,9 +239,10 @@ class PropertyListSerializer(serializers.ModelSerializer):
         }
 
     def get_images(self, obj):
-        # Return main image as array for compatibility
+        # Return main image as array for compatibility with conversion
         if obj.main_image:
-            return [obj.main_image]
+            converted = convert_image_urls_to_public([obj.main_image])
+            return converted
         return []
 
     def get_amenities(self, obj):

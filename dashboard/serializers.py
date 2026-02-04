@@ -14,9 +14,22 @@ class UserDashboardStatsSerializer(serializers.ModelSerializer):
 
 
 class OwnerDashboardStatsSerializer(serializers.ModelSerializer):
+    completion_rate = serializers.SerializerMethodField()
+    cancellation_rate = serializers.SerializerMethodField()
+    
     class Meta:
         model = OwnerDashboardStats
         fields = '__all__'
+    
+    def get_completion_rate(self, obj):
+        if obj.total_reservations > 0:
+            return round((obj.completed_reservations / obj.total_reservations) * 100, 1)
+        return 0
+    
+    def get_cancellation_rate(self, obj):
+        if obj.total_reservations > 0:
+            return round((obj.cancelled_reservations / obj.total_reservations) * 100, 1)
+        return 0
 
 
 class AdminDashboardStatsSerializer(serializers.ModelSerializer):

@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from properties.models import Property, Room, RoomCategory, RoomAvailability
+from properties.utils import convert_r2_url_to_public
 from .models import Reservation, Payment, Refund, Cancellation, BookingModification, CheckIn, CheckOut, ReviewInvitation
 
 User = get_user_model()
@@ -288,7 +289,9 @@ class ReservationListSerializer(serializers.ModelSerializer):
     def get_property_image(self, obj):
         try:
             imgs = obj.property_obj.images or []
-            return imgs[0] if imgs else None
+            if imgs:
+                return convert_r2_url_to_public(imgs[0])
+            return None
         except Exception:
             return None
 
@@ -317,7 +320,7 @@ class OwnerReservationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Reservation
         fields = ('id', 'property', 'property_name', 'property_location', 'property_image',
-                 'user', 'room', 'room_name', 'check_in', 'check_out', 'guests', 'total_price', 'status',
+                 'user', 'room', 'room_name', 'check_in', 'check_out', 'guests', 'total_price', 'status', 'payment_status',
                  'created_at', 'updated_at', 'guest_info', 'payment', 'guest_name', 'reference', 'owner_user_id')
 
     def get_property_location(self, obj):
@@ -326,8 +329,8 @@ class OwnerReservationSerializer(serializers.ModelSerializer):
     def get_property_image(self, obj):
         # Property.images is a JSONField containing list of image URLs
         if obj.property_obj.images and len(obj.property_obj.images) > 0:
-            # Return the first image URL directly
-            return obj.property_obj.images[0]
+            # Return the first image URL converted to public format
+            return convert_r2_url_to_public(obj.property_obj.images[0])
         return None
 
     def get_guest_info(self, obj):

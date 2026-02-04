@@ -2,7 +2,85 @@ from PIL import Image, ImageOps
 import os
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
+from django.conf import settings
 from io import BytesIO
+
+
+# R2 URL conversion constants
+OLD_R2_ENDPOINT = '974dd2fd587f660b7a5b75ca1057b741.r2.cloudflarestorage.com'
+R2_PUBLIC_URL = getattr(settings, 'R2_PUBLIC_URL', 'https://pub-55e6e691913e44f98f71163828507001.r2.dev')
+
+
+def convert_r2_url_to_public(url):
+    """
+    Convert old R2 endpoint URLs to public R2 URL format.
+    
+    Args:
+        url: The URL to convert
+        
+    Returns:
+        str: The converted public URL
+    """
+    if not url:
+        return url
+    
+    # If already using public R2 URL, return as-is
+    if 'pub-' in url and 'r2.dev' in url:
+        return url
+    
+    # Has old R2 endpoint - remove it and prepend R2 public URL
+    if OLD_R2_ENDPOINT in url:
+        url = url.replace(f'https://{OLD_R2_ENDPOINT}', '')
+        url = url.lstrip('/')
+        return f'{R2_PUBLIC_URL}/{url}'
+    
+    # Is a relative path (starts with property_images/, profile_pics/, room_images/)
+    if url.startswith(('property_images/', 'profile_pics/', 'room_images/')):
+        return f'{R2_PUBLIC_URL}/{url}'
+    
+    # Is a local media path (contains localhost or /media/)
+    if 'localhost' in url:
+        # Extract path after the domain and port
+        url = url.split('localhost')[1]
+        # Remove port if present (:8000)
+        if url.startswith(':'):
+            url = url[url.find('/'):]
+        url = url.lstrip('/')
+        # Remove 'media/' prefix
+        url = url.replace('media/', '', 1)
+        return f'{R2_PUBLIC_URL}/{url}'
+    
+    # Is a /media/ path
+    if url.startswith('/media/'):
+        url = url.replace('/media/', '', 1)
+        return f'{R2_PUBLIC_URL}/{url}'
+    
+    # For any other URL (like unsplash), return as-is
+    return url
+
+
+def convert_image_urls_to_public(image_list):
+    """
+    Convert a list of image URLs to use public R2 URL format.
+    
+    Args:
+        image_list: List of image URLs
+        
+    Returns:
+        list: List of converted image URLs
+    """
+    if not image_list:
+        return []
+    
+    converted = []
+    for url in image_list:
+        converted_url = convert_r2_url_to_public(url)
+        # Prepend public URL base
+        if converted_url and not converted_url.startswith('http'):
+            converted_url = f"{R2_PUBLIC_URL}/{converted_url}"
+        converted.append(converted_url)
+    
+    return converted
 
 
 def compress_image(image_file, max_width=1200, max_height=800, quality=85):

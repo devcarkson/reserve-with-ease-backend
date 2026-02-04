@@ -277,8 +277,16 @@ def owner_reservations_view(request):
 
     # If performance data is requested, include it
     if include_performance:
+        import logging
+        logger = logging.getLogger('django')
+        logger.error(f"Reservations Performance Debug - time_period: {time_period}")
+        logger.error(f"Reservations Performance Debug - queryset count: {queryset.count()}")
+        
         paid_reservations = performance_queryset.filter(payment_status='paid')
         total_revenue = paid_reservations.aggregate(total=Sum('total_price'))['total'] or 0
+        
+        logger.error(f"Reservations Performance Debug - paid_reservations count: {paid_reservations.count()}")
+        logger.error(f"Reservations Performance Debug - total_revenue: {total_revenue}")
         
         # Get detailed performance metrics
         status_counts = {}

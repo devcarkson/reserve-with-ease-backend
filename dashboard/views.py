@@ -157,7 +157,7 @@ def owner_dashboard_view(request):
         logger.error(f"Revenue Debug - Total revenue: {stats.total_revenue}")
         if paid_reservations.exists():
             for res in paid_reservations:
-                logger.error(f"Revenue Debug - Reservation {res.id}: ₦{res.total_price} (status: {res.payment_status})")
+                logger.error(f"Revenue Debug - Reservation {res.id}: NGN{res.total_price} (status: {res.payment_status})")
 
         # Monthly revenue (last 30 days)
         thirty_days_ago = timezone.now().date() - timedelta(days=30)
@@ -195,6 +195,12 @@ def owner_dashboard_view(request):
         logger.error(f"  occupancy_rate: {stats.occupancy_rate}")
 
         serializer = OwnerDashboardStatsSerializer(stats)
+        
+        # Debug: Print actual serialized data
+        import logging
+        logger = logging.getLogger('django')
+        logger.error(f"Serialized response data: {serializer.data}")
+        
         return Response(serializer.data)
     
     except Exception as e:

@@ -170,8 +170,8 @@ AWS_S3_REGION_NAME = config('R2_REGION', default='weur')
 # R2 Public URL for serving files
 R2_PUBLIC_URL = 'https://pub-55e6e691913e44f98f71163828507001.r2.dev'
 
-# Use R2 for media files
-MEDIA_URL = f"https://{AWS_STORAGE_BUCKET_NAME}.{AWS_S3_ENDPOINT_URL.replace('https://', '')}/"
+# Use R2 for media files with public URL
+MEDIA_URL = f"{R2_PUBLIC_URL}/"
 DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
 
 # Default primary key field type
