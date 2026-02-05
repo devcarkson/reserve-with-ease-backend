@@ -34,8 +34,8 @@ def convert_r2_url_to_public(url):
         url = url.lstrip('/')
         return f'{R2_PUBLIC_URL}/{url}'
     
-    # Is a relative path (starts with property_images/, profile_pics/, room_images/)
-    if url.startswith(('property_images/', 'profile_pics/', 'room_images/')):
+    # Is a relative path (starts with property_images/, profile_pics/, room_images/, property_types/)
+    if url.startswith(('property_images/', 'profile_pics/', 'room_images/', 'property_types/')):
         return f'{R2_PUBLIC_URL}/{url}'
     
     # Is a local media path (contains localhost or /media/)

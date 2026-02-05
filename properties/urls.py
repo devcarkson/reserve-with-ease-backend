@@ -4,6 +4,12 @@ from . import views
 app_name = 'properties'
 
 urlpatterns = [
+    # Property Type endpoints
+    path('types/', views.PropertyTypeListCreateView.as_view(), name='property-type-list-create'),
+    path('types/public/', views.property_types_public_view, name='property-types-public'),
+    path('types/<int:pk>/', views.PropertyTypeDetailView.as_view(), name='property-type-detail'),
+    
+    # Property endpoints
     path('', views.PropertyListCreateView.as_view(), name='property-list-create'),
     path('search/', views.property_search_view, name='property-search'),
     path('my-properties/', views.my_properties_view, name='my-properties'),

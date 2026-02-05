@@ -1,9 +1,33 @@
 from django.contrib import admin
 from .models import (
-    Property, Room, PropertyImage, RoomImage, 
+    PropertyType, Property, Room, PropertyImage, RoomImage, 
     PropertyAvailability, RoomAvailability, PropertyFeature, 
     PropertyReviewSummary
 )
+
+
+@admin.register(PropertyType)
+class PropertyTypeAdmin(admin.ModelAdmin):
+    list_display = ('name', 'type', 'image_url')
+    search_fields = ('name', 'type')
+    ordering = ('name',)
+    
+    fieldsets = (
+        ('Basic Info', {
+            'fields': ('name', 'type')
+        }),
+        ('Image', {
+            'fields': ('image',),
+            'description': 'Upload an image to automatically save its R2 URL below.'
+        }),
+        ('R2 Image URL (Auto-generated)', {
+            'fields': ('image_url',),
+            'classes': ('collapse',),
+            'description': 'This URL is automatically generated from the uploaded image.'
+        }),
+    )
+    
+    readonly_fields = ('image_url',)
 
 
 @admin.register(Property)

@@ -9,9 +9,9 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
 from django.core.files.storage import default_storage
 from .utils import optimize_image_upload
-from .models import Property, Room, PropertyImage, RoomImage, PropertyAvailability, RoomAvailability, PropertyFeature, PropertyReviewSummary, RoomCategory
+from .models import PropertyType, Property, Room, PropertyImage, RoomImage, PropertyAvailability, RoomAvailability, PropertyFeature, PropertyReviewSummary, RoomCategory
 from .serializers import (
-    PropertySerializer, PropertyCreateSerializer, PropertyUpdateSerializer,
+    PropertyTypeSerializer, PropertySerializer, PropertyCreateSerializer, PropertyUpdateSerializer,
     PropertyListSerializer, RoomSerializer, RoomCreateSerializer, RoomUpdateSerializer,
     PropertyAvailabilitySerializer, RoomAvailabilitySerializer, PropertySearchSerializer,
     PropertyImageSerializer, RoomImageSerializer, RoomCategorySerializer, RoomCategoryCreateSerializer
@@ -28,6 +28,53 @@ else:
     r2_storage = default_storage
 
 User = get_user_model()
+
+
+class PropertyTypeListCreateView(generics.ListCreateAPIView):
+    """
+    List and create property types.
+    - GET: Publicly accessible to all users (for property type carousel)
+    - POST: Admin only (for managing property types)
+    """
+    queryset = PropertyType.objects.all()
+    serializer_class = PropertyTypeSerializer
+
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [permissions.IsAdminUser()]
+        return [permissions.AllowAny()]
+
+    def get_queryset(self):
+        # Return all property types ordered by name
+        return PropertyType.objects.all().order_by('name')
+
+
+class PropertyTypeDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Retrieve, update, or delete a property type.
+    Admin only for all operations.
+    """
+    queryset = PropertyType.objects.all()
+    serializer_class = PropertyTypeSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def property_types_public_view(request):
+    """
+    Public endpoint to get property types for home page carousel.
+    This is cached for better performance.
+    """
+    try:
+        property_types = PropertyType.objects.all().order_by('name')
+        serializer = PropertyTypeSerializer(property_types, many=True)
+        return Response(serializer.data)
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to fetch property types: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 class IsOwner(permissions.BasePermission):
@@ -78,6 +125,7 @@ class PropertyListCreateView(generics.ListCreateAPIView):
         guests = self.request.query_params.get('guests')
         amenities = self.request.query_params.getlist('amenities')
         featured_only = self.request.query_params.get('featured_only')
+        property_type_id = self.request.query_params.get('property_type_id')
         
         if price_min:
             queryset = queryset.filter(price_per_night__gte=price_min)
@@ -92,6 +140,13 @@ class PropertyListCreateView(generics.ListCreateAPIView):
                 queryset = queryset.filter(amenities__contains=[amenity]).distinct()
         if featured_only == 'true':
             queryset = queryset.filter(featured=True)
+        if property_type_id:
+            # Get the PropertyType to get its type value
+            try:
+                property_type = PropertyType.objects.get(id=property_type_id)
+                queryset = queryset.filter(type=property_type.type)
+            except PropertyType.DoesNotExist:
+                queryset = queryset.none()
         
         return queryset
 

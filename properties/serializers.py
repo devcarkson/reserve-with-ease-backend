@@ -1,9 +1,27 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Property, Room, PropertyImage, RoomImage, PropertyAvailability, RoomAvailability, PropertyFeature, PropertyReviewSummary, RoomCategory
+from .models import PropertyType, Property, Room, PropertyImage, RoomImage, PropertyAvailability, RoomAvailability, PropertyFeature, PropertyReviewSummary, RoomCategory
 from .utils import convert_image_urls_to_public
 
 User = get_user_model()
+
+
+class PropertyTypeSerializer(serializers.ModelSerializer):
+    property_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = PropertyType
+        fields = ['id', 'name', 'type', 'image_url', 'property_count']
+    
+    def get_property_count(self, obj):
+        """Return count of active properties of this type"""
+        from .models import Property
+        return Property.objects.filter(type=obj.type, status='active').count()
+    
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Make image_url the primary field, image is internal only
+        return data
 
 
 class PropertyImageSerializer(serializers.ModelSerializer):

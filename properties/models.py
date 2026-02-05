@@ -1,7 +1,30 @@
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.conf import settings
 
 User = get_user_model()
+
+# Import R2 storage if enabled
+if settings.USE_R2:
+    from reserve_at_ease.custom_storage import R2Storage
+    r2_storage = R2Storage()
+else:
+    from django.core.files.storage import default_storage
+    r2_storage = default_storage
+
+
+class PropertyType(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    type = models.CharField(max_length=50, unique=True)  # URL-friendly type identifier
+    image = models.ImageField(upload_to='property_types/', storage=r2_storage, blank=True, null=True)
+    image_url = models.URLField(max_length=500, blank=True, null=True)  # URL for images (R2 or external)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name_plural = 'Property Types'
+
+    def __str__(self):
+        return self.name
 
 
 class Property(models.Model):

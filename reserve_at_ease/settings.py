@@ -34,7 +34,7 @@ DEBUG = config('DEBUG', default=True, cast=bool)
 # Disable auto-reload to prevent terminal reloading issues
 USE_RELOADER = config('USE_RELOADER', default=False, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=lambda v: [s.strip() for s in v.split(',')])
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1,testserver', cast=lambda v: [s.strip() for s in v.split(',')])
 
 # CORS Settings for Cloudflare R2
 CORS_ALLOW_ALL_ORIGINS = True
