@@ -25,6 +25,18 @@ class PropertyType(models.Model):
 
     def __str__(self):
         return self.name
+    
+    def save(self, *args, **kwargs):
+        # Auto-populate image_url from uploaded image
+        if self.image:
+            try:
+                # Use the image.url directly - R2Storage already returns the correct public URL
+                self.image_url = self.image.url
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error getting image URL for property type {self.name}: {str(e)}")
+        super().save(*args, **kwargs)
 
 
 class Property(models.Model):
@@ -112,7 +124,7 @@ class Room(models.Model):
 
 class PropertyImage(models.Model):
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='property_images')
-    image = models.ImageField(upload_to='property_images/')
+    image = models.ImageField(upload_to='property_images/', storage=r2_storage)
     label = models.CharField(max_length=255, blank=True)
     is_main = models.BooleanField(default=False)
     order = models.IntegerField(default=0)
@@ -127,7 +139,7 @@ class PropertyImage(models.Model):
 
 class RoomImage(models.Model):
     room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='room_images')
-    image = models.ImageField(upload_to='room_images/')
+    image = models.ImageField(upload_to='room_images/', storage=r2_storage)
     label = models.CharField(max_length=255, blank=True)
     is_main = models.BooleanField(default=False)
     order = models.IntegerField(default=0)
@@ -253,3 +265,38 @@ class PropertyReviewSummary(models.Model):
 
     def __str__(self):
         return f"Review Summary for {self.property_obj.name}"
+
+
+class Destination(models.Model):
+    """Model for Trending Destinations shown on Home page"""
+    name = models.CharField(max_length=100, help_text="City/Destination name")
+    image = models.ImageField(upload_to='destinations/', storage=r2_storage, blank=True, null=True)
+    image_url = models.URLField(max_length=500, blank=True, null=True, help_text="External image URL (for Unsplash images) - Auto-populated from uploaded image")
+    sort_order = models.IntegerField(default=0, help_text="Order to display destinations")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['sort_order', 'name']
+        verbose_name_plural = 'Destinations'
+
+    def __str__(self):
+        return self.name
+    
+    @property
+    def property_count(self):
+        """Count properties in this destination/city"""
+        from .models import Property
+        return Property.objects.filter(city__iexact=self.name, status='active').count()
+    
+    def save(self, *args, **kwargs):
+        # Auto-populate image_url from uploaded image
+        if self.image:
+            try:
+                # Use the image.url directly - R2Storage already returns the correct public URL
+                self.image_url = self.image.url
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error getting image URL for destination {self.name}: {str(e)}")
+        super().save(*args, **kwargs)

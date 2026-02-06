@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import PropertyType, Property, Room, PropertyImage, RoomImage, PropertyAvailability, RoomAvailability, PropertyFeature, PropertyReviewSummary, RoomCategory
+from .models import PropertyType, Property, Room, PropertyImage, RoomImage, PropertyAvailability, RoomAvailability, PropertyFeature, PropertyReviewSummary, RoomCategory, Destination
 from .utils import convert_image_urls_to_public
 
 User = get_user_model()
@@ -330,3 +330,49 @@ class PropertySearchSerializer(serializers.Serializer):
         choices=['price_low', 'price_high', 'rating_high', 'review_count'],
         default='rating_high'
     )
+
+
+class DestinationSerializer(serializers.ModelSerializer):
+    """Serializer for Destination model"""
+    image_url = serializers.SerializerMethodField()
+    property_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Destination
+        fields = ['id', 'name', 'image_url', 'sort_order', 'property_count']
+    
+    def get_image_url(self, obj):
+        """Return the image URL (either from image_url field or from uploaded image)"""
+        if obj.image_url:
+            return obj.image_url
+        if obj.image:
+            # Convert to public R2 URL format using the utility function
+            return convert_image_urls_to_public([obj.image.name])[0]
+        return None
+    
+    def get_property_count(self, obj):
+        """Return count of active properties in this destination/city"""
+        from .models import Property
+        return Property.objects.filter(city__iexact=obj.name, status='active').count()
+
+
+class DestinationCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating/updating Destination"""
+    image_url = serializers.URLField(required=False, allow_blank=True, allow_null=True)
+    
+    class Meta:
+        model = Destination
+        fields = ['id', 'name', 'image', 'image_url', 'sort_order']
+    
+    def validate(self, attrs):
+        """
+        Validate that either image or image_url is provided, but not both required.
+        """
+        image = attrs.get('image')
+        image_url = attrs.get('image_url')
+        
+        # If no image and no image_url, that's fine (destination can exist without images)
+        # If image is provided, image_url can be empty (will be auto-populated)
+        # If image_url is provided, image can be empty (external URL)
+        
+        return attrs

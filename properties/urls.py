@@ -9,6 +9,12 @@ urlpatterns = [
     path('types/public/', views.property_types_public_view, name='property-types-public'),
     path('types/<int:pk>/', views.PropertyTypeDetailView.as_view(), name='property-type-detail'),
     
+    # Destination endpoints
+    path('destinations/public/', views.destinations_public_view, name='destinations-public'),
+    path('destinations/', views.DestinationListCreateView.as_view(), name='destination-list-create'),
+    path('destinations/<int:pk>/', views.DestinationDetailView.as_view(), name='destination-detail'),
+    path('destinations/<int:destination_id>/upload-image/', views.upload_destination_image_view, name='upload-destination-image'),
+    
     # Property endpoints
     path('', views.PropertyListCreateView.as_view(), name='property-list-create'),
     path('search/', views.property_search_view, name='property-search'),

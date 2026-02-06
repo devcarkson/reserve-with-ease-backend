@@ -9,12 +9,13 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
 from django.core.files.storage import default_storage
 from .utils import optimize_image_upload
-from .models import PropertyType, Property, Room, PropertyImage, RoomImage, PropertyAvailability, RoomAvailability, PropertyFeature, PropertyReviewSummary, RoomCategory
+from .models import PropertyType, Property, Room, PropertyImage, RoomImage, PropertyAvailability, RoomAvailability, PropertyFeature, PropertyReviewSummary, RoomCategory, Destination
 from .serializers import (
     PropertyTypeSerializer, PropertySerializer, PropertyCreateSerializer, PropertyUpdateSerializer,
     PropertyListSerializer, RoomSerializer, RoomCreateSerializer, RoomUpdateSerializer,
     PropertyAvailabilitySerializer, RoomAvailabilitySerializer, PropertySearchSerializer,
-    PropertyImageSerializer, RoomImageSerializer, RoomCategorySerializer, RoomCategoryCreateSerializer
+    PropertyImageSerializer, RoomImageSerializer, RoomCategorySerializer, RoomCategoryCreateSerializer,
+    DestinationSerializer, DestinationCreateSerializer
 )
 
 # Import custom R2 storage
@@ -522,6 +523,89 @@ def property_availability_view(request, property_id):
 
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
+def destinations_public_view(request):
+    """
+    Public endpoint to get destinations for home page.
+    Dynamically derived from cities in Property model.
+    """
+    try:
+        # Get active properties and aggregate by city
+        from django.db.models import Count
+        
+        # Get cities with active properties, ordered by property count
+        city_stats = Property.objects.filter(
+            status='active'
+        ).exclude(
+            city__isnull=True
+        ).exclude(
+            city=''
+        ).values('city').annotate(
+            property_count=Count('id')
+        ).order_by('-property_count')
+        
+        # Get custom destinations (for images and sort order)
+        custom_destinations = {d.name.lower(): d for d in Destination.objects.all()}
+        
+        # Build destination list
+        destinations = []
+        sort_order = 0
+        
+        # First, add custom destinations in their specified order
+        for dest in Destination.objects.all().order_by('sort_order'):
+            # Find matching city in properties (case-insensitive)
+            city_stat = None
+            for cs in city_stats:
+                # Check for exact match or match after removing common suffixes
+                city_lower = cs['city'].lower().replace(', nigeria', '').strip()
+                if city_lower == dest.name.lower():
+                    city_stat = cs
+                    break
+            
+            property_count = city_stat['property_count'] if city_stat else 0
+            
+            destinations.append({
+                'id': dest.id,
+                'name': dest.name,
+                'image_url': dest.image_url,
+                'sort_order': dest.sort_order,
+                'property_count': property_count
+            })
+            sort_order += 1
+        
+        # Then, add cities from properties that don't have custom destinations
+        matched_cities = set()
+        
+        for dest in Destination.objects.all():
+            city_lower = dest.name.lower().replace(', nigeria', '').strip()
+            matched_cities.add(city_lower)
+        
+        for city_stat in city_stats:
+            city_name = city_stat['city']
+            city_lower = city_name.lower().replace(', nigeria', '').strip()
+            
+            if city_lower not in matched_cities:
+                destinations.append({
+                    'id': 0,  # 0 means no custom destination
+                    'name': city_name,
+                    'image_url': None,  # No custom image, will use default
+                    'sort_order': sort_order,
+                    'property_count': city_stat['property_count']
+                })
+                sort_order += 1
+        
+        # Sort by sort_order
+        destinations.sort(key=lambda x: x['sort_order'])
+        
+        return Response(destinations)
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to fetch destinations: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
 def property_calendar_view(request, property_id):
     """Get availability calendar for a property for a specific month"""
     try:
@@ -668,3 +752,71 @@ def update_property_availability_view(request, property_id):
         'message': f'Updated {len(updated_records)} availability records',
         'updated': updated_records
     })
+
+
+# Destination Management Views
+class DestinationListCreateView(generics.ListCreateAPIView):
+    """
+    List and create destinations.
+    - GET: Admin only
+    - POST: Admin only
+    """
+    queryset = Destination.objects.all()
+    serializer_class = DestinationSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return DestinationCreateSerializer
+        return DestinationSerializer
+
+    def get_queryset(self):
+        return Destination.objects.all().order_by('sort_order', 'name')
+
+
+class DestinationDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    Retrieve, update, or delete a destination.
+    Admin only for all operations.
+    """
+    queryset = Destination.objects.all()
+    serializer_class = DestinationCreateSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAdminUser])
+def upload_destination_image_view(request, destination_id):
+    """
+    Upload an image for a destination.
+    This handles the image upload and sets both image and image_url fields.
+    """
+    try:
+        destination = Destination.objects.get(id=destination_id)
+    except Destination.DoesNotExist:
+        return Response({'error': 'Destination not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    image = request.FILES.get('image')
+    if not image:
+        return Response({'error': 'Image file is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        # Optimize the uploaded image
+        optimized_images = optimize_image_upload(image, 'destination_image')
+        
+        # Save the image using R2 storage
+        image_file = optimized_images['compressed'] or optimized_images['original']
+        image_path = r2_storage.save(f'destinations/{image_file.name}', image_file)
+        
+        # Update the destination with the new image
+        destination.image = image_path
+        destination.save()  # This will trigger the save method to set image_url
+        
+        serializer = DestinationSerializer(destination)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response(
+            {'error': f'Failed to upload image: {str(e)}'}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

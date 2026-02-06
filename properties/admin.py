@@ -1,14 +1,15 @@
 from django.contrib import admin
+from django.utils.html import format_html
 from .models import (
     PropertyType, Property, Room, PropertyImage, RoomImage, 
     PropertyAvailability, RoomAvailability, PropertyFeature, 
-    PropertyReviewSummary
+    PropertyReviewSummary, Destination
 )
 
 
 @admin.register(PropertyType)
 class PropertyTypeAdmin(admin.ModelAdmin):
-    list_display = ('name', 'type', 'image_url')
+    list_display = ('name', 'type', 'image_preview', 'image_url')
     search_fields = ('name', 'type')
     ordering = ('name',)
     
@@ -28,6 +29,22 @@ class PropertyTypeAdmin(admin.ModelAdmin):
     )
     
     readonly_fields = ('image_url',)
+    
+    def image_preview(self, obj):
+        if obj.image_url:
+            return format_html('<img src="{}" width="50" />', obj.image_url)
+        elif obj.image:
+            return format_html('<img src="{}" width="50" />', obj.image.url)
+        return '-'
+    image_preview.short_description = 'Preview'
+    
+    def save_model(self, request, obj, form, change):
+        # Call the model's save method first
+        super().save_model(request, obj, form, change)
+        # After saving, update image_url from the uploaded image
+        if obj.image:
+            obj.image_url = obj.image.url
+            obj.save()
 
 
 @admin.register(Property)
@@ -202,3 +219,42 @@ class PropertyReviewSummaryAdmin(admin.ModelAdmin):
         if request.user.is_superuser:
             return qs
         return qs.filter(property_obj__owner=request.user)
+
+
+@admin.register(Destination)
+class DestinationAdmin(admin.ModelAdmin):
+    list_display = ('name', 'sort_order', 'image_preview')
+    search_fields = ('name',)
+    ordering = ('sort_order', 'name')
+    readonly_fields = ('image_url',)
+    
+    fieldsets = (
+        ('Basic Info', {
+            'fields': ('name', 'sort_order')
+        }),
+        ('Image', {
+            'fields': ('image',),
+            'description': 'Upload an image to automatically save its R2 URL below.'
+        }),
+        ('R2 Image URL (Auto-generated)', {
+            'fields': ('image_url',),
+            'classes': ('collapse',),
+            'description': 'This URL is automatically generated from uploaded image.'
+        }),
+    )
+    
+    def image_preview(self, obj):
+        if obj.image_url:
+            return format_html('<img src="{}" width="50" />', obj.image_url)
+        elif obj.image:
+            return format_html('<img src="{}" width="50" />', obj.image.url)
+        return '-'
+    image_preview.short_description = 'Preview'
+    
+    def save_model(self, request, obj, form, change):
+        # Call the model's save method first
+        super().save_model(request, obj, form, change)
+        # After saving, update image_url from the uploaded image
+        if obj.image:
+            obj.image_url = obj.image.url
+            obj.save()
