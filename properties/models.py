@@ -1,8 +1,7 @@
 from django.db import models
-from django.contrib.auth import get_user_model
 from django.conf import settings
 
-User = get_user_model()
+# User = get_user_model()  # Commented out to avoid circular import
 
 # Import R2 storage if enabled
 if settings.USE_R2:
@@ -71,9 +70,9 @@ class Property(models.Model):
     free_cancellation = models.BooleanField(default=False)
     breakfast_included = models.BooleanField(default=False)
     featured = models.BooleanField(default=False)
-    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='properties')
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_properties')
-    authorized_users = models.ManyToManyField(User, related_name='authorized_properties', blank=True)
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='properties')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_properties')
+    authorized_users = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name='authorized_properties', blank=True)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='active')
     map_link = models.URLField(max_length=50000, blank=True)
     check_in_time = models.CharField(max_length=10, default='14:00')
@@ -158,6 +157,9 @@ class PropertyAvailability(models.Model):
     available = models.BooleanField(default=True)
     price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     minimum_stay = models.IntegerField(default=1)
+    # Discount fields
+    has_discount = models.BooleanField(default=False)
+    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -165,6 +167,12 @@ class PropertyAvailability(models.Model):
         unique_together = ['property', 'date']
         ordering = ['date']
     
+    def get_effective_price(self, base_price):
+        """Get effective price for this date"""
+        if self.has_discount and self.discount_percentage:
+            return float(base_price) * (1 - float(self.discount_percentage) / 100)
+        return float(self.price) if self.price else float(base_price)
+
     def __str__(self):
         return f"{self.property.name} - {self.date}"
 
@@ -211,6 +219,11 @@ class RoomCategory(models.Model):
     bed_type = models.CharField(max_length=50, blank=True)
     size = models.IntegerField(default=0)  # sqm
     amenities = models.JSONField(default=list)  # List of amenity IDs
+    # Discount fields
+    has_discount = models.BooleanField(default=False)
+    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    discount_start_date = models.DateField(null=True, blank=True)
+    discount_end_date = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -220,8 +233,33 @@ class RoomCategory(models.Model):
     def __str__(self):
         return f"{self.name} - {self.property.name}"
 
+    def is_discount_active(self):
+        """Check if discount is currently active"""
+        if not self.has_discount:
+            return False
+        from django.utils import timezone
+        today = timezone.now().date()
+        return (
+            self.discount_start_date and self.discount_end_date and
+            self.discount_start_date <= today <= self.discount_end_date
+        )
+    
+    def get_effective_price(self):
+        """Get current price with discount if active"""
+        if self.has_discount and self.is_discount_active():
+            return float(self.base_price) * (1 - float(self.discount_percentage) / 100)
+        return float(self.base_price)
+
     def save(self, *args, **kwargs):
         is_new = self.pk is None
+        
+        # Auto-expire discount if end date has passed
+        if self.has_discount and self.discount_end_date:
+            from django.utils import timezone
+            today = timezone.now().date()
+            if self.discount_end_date < today:
+                self.has_discount = False
+        
         super().save(*args, **kwargs)
         # Update all rooms in this category to match category properties
         existing_rooms = list(self.rooms.all())
@@ -230,7 +268,7 @@ class RoomCategory(models.Model):
             room.max_guests = self.max_occupancy
             room.bed_type = self.bed_type
             room.size = self.size
-            room.price_per_night = self.base_price
+            room.price_per_night = self.get_effective_price()  # Use effective price
             room.amenities = self.amenities
             room.save()
 
@@ -245,7 +283,7 @@ class RoomCategory(models.Model):
                     max_guests=self.max_occupancy,
                     bed_type=self.bed_type,
                     size=self.size,
-                    price_per_night=self.base_price,
+                    price_per_night=self.get_effective_price(),  # Use effective price
                     amenities=self.amenities,
                     available=True
                 )

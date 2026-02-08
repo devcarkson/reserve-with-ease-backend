@@ -23,4 +23,11 @@ urlpatterns = [
     path('2fa/status/', views.get_2fa_status_view, name='get_2fa_status'),
     path('2fa/disable/', views.disable_2fa_view, name='disable_2fa'),
     path('2fa/regenerate-backup-codes/', views.regenerate_backup_codes_view, name='regenerate_backup_codes'),
+    
+    # Wishlist URLs
+    path('wishlist/', views.get_wishlist_view, name='wishlist'),
+    path('wishlist/add/', views.add_to_wishlist_view, name='add_to_wishlist'),
+    path('wishlist/remove/<int:property_id>/', views.remove_from_wishlist_view, name='remove_from_wishlist'),
+    path('wishlist/check/<int:property_id>/', views.check_wishlist_view, name='check_wishlist'),
+    path('wishlist/toggle/', views.toggle_wishlist_view, name='toggle_wishlist'),
 ]

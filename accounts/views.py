@@ -9,7 +9,7 @@ from django.utils.crypto import get_random_string
 from django.contrib.auth import update_session_auth_hash
 from django.db import IntegrityError
 from django.utils import timezone
-from .models import EmailVerification, PasswordReset
+from .models import EmailVerification, PasswordReset, Wishlist
 from .serializers import (
     UserRegistrationSerializer, UserLoginSerializer, UserSerializer,
     UserUpdateSerializer, PasswordChangeSerializer, PasswordResetSerializer,
@@ -617,3 +617,98 @@ def regenerate_backup_codes_view(request):
     result = serializer.save()
     
     return Response(result, status=status.HTTP_200_OK)
+
+
+# Wishlist Views
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_wishlist_view(request):
+    """Get all wishlist items for the current user"""
+    from properties.serializers import PropertyListSerializer
+    from properties.models import Property
+    
+    wishlist = Wishlist.objects.filter(user=request.user).order_by('-created_at')
+    property_ids = [w.property_id for w in wishlist]
+    properties = Property.objects.filter(id__in=property_ids)
+    serializer = PropertyListSerializer(properties, many=True)
+    return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def add_to_wishlist_view(request):
+    """Add a property to the user's wishlist"""
+    property_id = request.data.get('property_id')
+    if not property_id:
+        return Response({'error': 'Property ID is required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        from properties.models import Property
+        Property.objects.get(id=property_id)
+    except Property.DoesNotExist:
+        return Response({'error': 'Property not found'}, status=status.HTTP_404_NOT_FOUND)
+    
+    wishlist, created = Wishlist.objects.get_or_create(
+        user=request.user,
+        property_id=property_id
+    )
+    
+    if created:
+        return Response({'message': 'Property added to wishlist'}, status=status.HTTP_201_CREATED)
+    else:
+        return Response({'message': 'Property already in wishlist'}, status=status.HTTP_200_OK)
+
+
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def remove_from_wishlist_view(request, property_id):
+    """Remove a property from the user's wishlist"""
+    try:
+        wishlist = Wishlist.objects.get(
+            user=request.user,
+            property_id=property_id
+        )
+        wishlist.delete()
+        return Response({'message': 'Property removed from wishlist'}, status=status.HTTP_200_OK)
+    except Wishlist.DoesNotExist:
+        return Response({'error': 'Property not in wishlist'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def check_wishlist_view(request, property_id):
+    """Check if a property is in the user's wishlist"""
+    is_in_wishlist = Wishlist.objects.filter(
+        user=request.user,
+        property_id=property_id
+    ).exists()
+    
+    return Response({'is_in_wishlist': is_in_wishlist}, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def toggle_wishlist_view(request):
+    """Toggle a property's wishlist status"""
+    property_id = request.data.get('property_id')
+    if not property_id:
+        return Response({'error': 'Property ID is required'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    wishlist = Wishlist.objects.filter(
+        user=request.user,
+        property_id=property_id
+    ).first()
+    
+    if wishlist:
+        wishlist.delete()
+        return Response({'is_in_wishlist': False, 'message': 'Property removed from wishlist'}, status=status.HTTP_200_OK)
+    else:
+        try:
+            from properties.models import Property
+            Property.objects.get(id=property_id)
+        except Property.DoesNotExist:
+            return Response({'error': 'Property not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        Wishlist.objects.create(user=request.user, property_id=property_id)
+        return Response({'is_in_wishlist': True, 'message': 'Property added to wishlist'}, status=status.HTTP_201_CREATED)

@@ -273,6 +273,16 @@ class PropertySearchView(generics.ListAPIView):
         if property_type:
             queryset = queryset.filter(type=property_type)
         
+        # Filter by active discount
+        is_discount_active = self.request.query_params.get('is_discount_active', '')
+        if is_discount_active.lower() == 'true':
+            from django.utils import timezone
+            now = timezone.now()
+            queryset = queryset.filter(
+                has_discount=True,
+                discount_end_date__gte=now
+            )
+        
         if price_min:
             queryset = queryset.filter(price_per_night__gte=price_min)
         

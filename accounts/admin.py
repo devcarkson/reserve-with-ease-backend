@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, UserProfile, EmailVerification, PasswordReset
+from .models import User, UserProfile, EmailVerification, PasswordReset, Wishlist
 
 
 @admin.register(User)
@@ -81,3 +81,12 @@ class PasswordResetAdmin(admin.ModelAdmin):
         deleted_count = queryset.filter(is_used=False).delete()[0]
         self.message_user(request, f'{deleted_count} unused password reset(s) deleted.')
     delete_unused.short_description = 'Delete unused resets'
+
+
+@admin.register(Wishlist)
+class WishlistAdmin(admin.ModelAdmin):
+    list_display = ('user', 'property_id', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('user__username', 'user__email')
+    raw_id_fields = ('user',)
+    readonly_fields = ('created_at',)

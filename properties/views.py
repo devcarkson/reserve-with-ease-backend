@@ -127,6 +127,8 @@ class PropertyListCreateView(generics.ListCreateAPIView):
         amenities = self.request.query_params.getlist('amenities')
         featured_only = self.request.query_params.get('featured_only')
         property_type_id = self.request.query_params.get('property_type_id')
+        has_discount = self.request.query_params.get('has_discount')
+        is_discount_active = self.request.query_params.get('is_discount_active')
         
         if price_min:
             queryset = queryset.filter(price_per_night__gte=price_min)
@@ -148,6 +150,27 @@ class PropertyListCreateView(generics.ListCreateAPIView):
                 queryset = queryset.filter(type=property_type.type)
             except PropertyType.DoesNotExist:
                 queryset = queryset.none()
+        
+        # Discount filtering - only show properties with currently active discounts
+        if is_discount_active == 'true':
+            # Filter properties that have currently active discounts
+            from django.utils import timezone
+            from datetime import timedelta
+            today = timezone.now().date()
+            
+            # Check room categories with active discounts (date range required)
+            queryset = queryset.filter(
+                Q(room_categories__has_discount=True,
+                  room_categories__discount_start_date__lte=today,
+                  room_categories__discount_end_date__gte=today) |
+                # Check availability with active discounts (any discount for today's or future dates)
+                Q(availability__has_discount=True,
+                  availability__date__gte=today) |
+                # Check for weekend discounts in availability (next 7 days)
+                Q(availability__has_discount=True,
+                  availability__date__gte=today,
+                  availability__date__lte=today + timedelta(days=7))
+            ).distinct()
         
         return queryset
 
@@ -349,7 +372,10 @@ class RoomCategoryListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         property_id = self.kwargs['property_id']
-        property_obj = Property.objects.get(id=property_id)
+        try:
+            property_obj = Property.objects.get(id=property_id)
+        except Property.DoesNotExist:
+            raise serializers.ValidationError({'property': 'Property not found'})
         user = self.request.user
 
         # Check permissions based on owner type
@@ -376,6 +402,12 @@ class RoomCategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
             return [permissions.IsAuthenticated()]
         return [permissions.AllowAny()]
 
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            from .serializers import RoomCategoryCreateSerializer
+            return RoomCategoryCreateSerializer
+        return RoomCategorySerializer
+
     def get_queryset(self):
         user = self.request.user
 
@@ -395,6 +427,10 @@ class RoomCategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
         else:
             # Users with no owner_type see no room categories
             return RoomCategory.objects.none()
+
+    def perform_update(self, serializer):
+        # Save the updated room category
+        serializer.save()
 
 
 @api_view(['GET'])
@@ -738,7 +774,9 @@ def update_property_availability_view(request, property_id):
             date=date_str,
             defaults={
                 'available': available,
-                'price': price
+                'price': price,
+                'has_discount': item.get('has_discount', False),
+                'discount_percentage': item.get('discount_percentage')
             }
         )
         updated_records.append({

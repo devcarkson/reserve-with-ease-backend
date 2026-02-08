@@ -96,12 +96,17 @@ class PropertySerializer(serializers.ModelSerializer):
     rating = serializers.SerializerMethodField()
 
     def get_owner(self, obj):
-        return {
-            'id': obj.owner.id,
-            'username': obj.owner.username,
-            'get_full_name': obj.owner.get_full_name(),
-            'profile_picture': obj.owner.profile_picture.url if obj.owner.profile_picture else None,
-        }
+        if not obj.owner:
+            return {'id': None, 'username': 'Unknown', 'get_full_name': '', 'profile_picture': None}
+        try:
+            return {
+                'id': obj.owner.id,
+                'username': obj.owner.username,
+                'get_full_name': obj.owner.get_full_name(),
+                'profile_picture': obj.owner.profile_picture.url if obj.owner.profile_picture else None,
+            }
+        except Exception:
+            return {'id': obj.owner.id if hasattr(obj.owner, 'id') else None, 'username': 'Unknown', 'get_full_name': '', 'profile_picture': None}
 
     def get_rating(self, obj):
         reviews = obj.reviews.all()
@@ -127,21 +132,72 @@ class PropertySerializer(serializers.ModelSerializer):
         }
 
     def get_price_per_night(self, obj):
-        # Get minimum price from room categories or availability
+        # Get minimum effective price from room categories or availability
         prices = []
 
-        # Get prices from room categories
-        room_category_prices = obj.room_categories.filter(base_price__gt=0).values_list('base_price', flat=True)
-        prices.extend(room_category_prices)
+        # Get effective prices from room categories (includes discounts)
+        try:
+            for room_category in obj.room_categories.all():
+                base_price = room_category.base_price if room_category else 0
+                effective_price = room_category.get_effective_price(base_price)
+                if effective_price and effective_price > 0:
+                    prices.append(effective_price)
+        except Exception:
+            pass
 
-        # Get prices from availability (calendar)
-        availability_prices = obj.availability.filter(price__gt=0).values_list('price', flat=True)
-        prices.extend(availability_prices)
+        # Get effective prices from availability (includes discounts)
+        try:
+            for availability in obj.availability.all():
+                base_price = availability.price if availability else 0
+                effective_price = availability.get_effective_price(base_price)
+                if effective_price and effective_price > 0:
+                    prices.append(effective_price)
+        except Exception:
+            pass
 
-        # Return minimum price if available, otherwise fallback to property price
+        # Return minimum effective price if available, otherwise fallback to property price
         if prices:
             return min(prices)
-        return obj.price_per_night
+        return obj.price_per_night if obj.price_per_night else 0
+
+
+    def get_has_discount(self, obj):
+        """Check if property has any active discounts"""
+        from django.utils import timezone
+        today = timezone.now().date()
+        
+        # Check room categories for active discounts
+        has_category_discount = obj.room_categories.filter(
+            has_discount=True,
+            discount_start_date__lte=today,
+            discount_end_date__gte=today
+        ).exists()
+        
+        # Check availability for active discounts
+        has_availability_discount = obj.availability.filter(
+            has_discount=True
+        ).exists()
+        
+        return has_category_discount or has_availability_discount
+
+    def get_discount_percentage(self, obj):
+        """Get highest discount percentage from room categories"""
+        from django.utils import timezone
+        today = timezone.now().date()
+        
+        discount_categories = obj.room_categories.filter(
+            has_discount=True,
+            discount_start_date__lte=today,
+            discount_end_date__gte=today
+        ).order_by('-discount_percentage').first()
+        
+        if discount_categories:
+            return discount_categories.discount_percentage
+        return 0
+
+    def get_is_discount_active(self, obj):
+        """Check if any discount is currently active"""
+        return self.get_has_discount(obj)
 
     def get_owner(self, obj):
         return {
@@ -220,9 +276,17 @@ class RoomUpdateSerializer(serializers.ModelSerializer):
 
 
 class PropertyAvailabilitySerializer(serializers.ModelSerializer):
+    effective_price = serializers.SerializerMethodField()
+    
     class Meta:
         model = PropertyAvailability
         fields = '__all__'
+    
+    def get_effective_price(self, obj):
+        # Get base price from property's room categories
+        room_category = obj.property.room_categories.first()
+        base_price = room_category.base_price if room_category else 0
+        return obj.get_effective_price(base_price)
 
 
 class RoomAvailabilitySerializer(serializers.ModelSerializer):
@@ -238,14 +302,19 @@ class PropertyListSerializer(serializers.ModelSerializer):
     images = serializers.SerializerMethodField()
     amenities = serializers.SerializerMethodField()
     price_per_night = serializers.SerializerMethodField()
+    original_price = serializers.SerializerMethodField()
     rating = serializers.SerializerMethodField()
     review_count = serializers.SerializerMethodField()
+    has_discount = serializers.SerializerMethodField()
+    discount_percentage = serializers.SerializerMethodField()
+    is_discount_active = serializers.SerializerMethodField()
 
     class Meta:
         model = Property
         fields = ('id', 'name', 'type', 'city', 'country', 'rating', 'review_count',
-                  'price_per_night', 'currency', 'main_image', 'featured', 'owner',
-                  'location', 'images', 'amenities', 'description', 'free_cancellation', 'breakfast_included')
+                  'price_per_night', 'original_price', 'currency', 'main_image', 'featured', 'owner',
+                  'location', 'images', 'amenities', 'description', 'free_cancellation', 
+                  'breakfast_included', 'has_discount', 'discount_percentage', 'is_discount_active')
 
     def get_owner(self, obj):
         return {
@@ -284,27 +353,102 @@ class PropertyListSerializer(serializers.ModelSerializer):
         return obj.amenities or []
 
     def get_price_per_night(self, obj):
-        # Get minimum price from room categories or availability
+        # Get minimum effective price from room categories or availability
         prices = []
 
-        # Get prices from room categories
-        room_category_prices = obj.room_categories.filter(base_price__gt=0).values_list('base_price', flat=True)
-        prices.extend(room_category_prices)
+        # Get effective prices from room categories (includes discounts)
+        for room_category in obj.room_categories.all():
+            if room_category.base_price and room_category.base_price > 0:
+                effective_price = room_category.get_effective_price()
+                if effective_price and effective_price > 0:
+                    prices.append(effective_price)
 
-        # Get prices from availability (calendar)
-        availability_prices = obj.availability.filter(price__gt=0).values_list('price', flat=True)
-        prices.extend(availability_prices)
+        # Get effective prices from availability (includes discounts)
+        for availability in obj.availability.all():
+            if availability.price and availability.price > 0:
+                room_category = obj.room_categories.first()
+                base_price = room_category.base_price if room_category and room_category.base_price else 0
+                effective_price = availability.get_effective_price(base_price)
+                if effective_price and effective_price > 0:
+                    prices.append(effective_price)
 
-        # Return minimum price if available, otherwise fallback to property price
+        # Return minimum effective price if available, otherwise fallback to property price
         if prices:
             return min(prices)
-        return obj.price_per_night
+        # Fallback to property's price_per_night (ensure it's not 0)
+        if obj.price_per_night and float(obj.price_per_night) > 0:
+            return float(obj.price_per_night)
+        return 0
+
+    def get_original_price(self, obj):
+        """Get original/base price (before discount) from room categories"""
+        # Get minimum base price from room categories
+        base_prices = []
+        for room_category in obj.room_categories.all():
+            if room_category.base_price and room_category.base_price > 0:
+                base_prices.append(float(room_category.base_price))
+        
+        if base_prices:
+            return min(base_prices)
+        # Fallback to property's price_per_night (ensure it's not 0)
+        if obj.price_per_night and float(obj.price_per_night) > 0:
+            return float(obj.price_per_night)
+        return 0
+
+    def get_has_discount(self, obj):
+        """Check if property has any active discounts"""
+        from django.utils import timezone
+        today = timezone.now().date()
+        
+        # Check room categories for active discounts
+        has_category_discount = obj.room_categories.filter(
+            has_discount=True,
+            discount_start_date__lte=today,
+            discount_end_date__gte=today
+        ).exists()
+        
+        # Check availability for active discounts
+        has_availability_discount = obj.availability.filter(
+            has_discount=True
+        ).exists()
+        
+        return has_category_discount or has_availability_discount
+
+    def get_discount_percentage(self, obj):
+        """Get highest discount percentage from room categories"""
+        from django.utils import timezone
+        today = timezone.now().date()
+        
+        discount_categories = obj.room_categories.filter(
+            has_discount=True,
+            discount_start_date__lte=today,
+            discount_end_date__gte=today
+        ).order_by('-discount_percentage').first()
+        
+        if discount_categories:
+            return discount_categories.discount_percentage
+        return 0
+
+    def get_is_discount_active(self, obj):
+        """Check if any discount is currently active"""
+        return self.get_has_discount(obj)
 
 
 class RoomCategorySerializer(serializers.ModelSerializer):
+    effective_price = serializers.SerializerMethodField()
+    is_discount_active = serializers.SerializerMethodField()
+    
     class Meta:
         model = RoomCategory
         fields = '__all__'
+    
+    def get_effective_price(self, obj):
+        """Get current price with discount if active"""
+        return obj.get_effective_price()
+    
+    def get_is_discount_active(self, obj):
+        """Check if discount is currently active based on dates"""
+        return obj.is_discount_active()
 
 
 class RoomCategoryCreateSerializer(serializers.ModelSerializer):
