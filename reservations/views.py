@@ -88,7 +88,6 @@ def create_reservation_view(request):
     serializer.is_valid(raise_exception=True)
 
     reservation = serializer.save()
-    print(f"Created reservation with ID: {reservation.id}")  # Debug log
 
     # Create review invitation
     try:
@@ -98,17 +97,15 @@ def create_reservation_view(request):
             reservation=reservation,
             token=get_random_string(32)
         )
-    except Exception as e:
-        print(f"Warning: Failed to create review invitation: {e}")
-        # Continue even if review invitation fails
+    except Exception:
+        pass
 
     # Send notifications (with error handling)
     try:
         from notifications.utils import send_booking_notifications
         send_booking_notifications(reservation)
-    except Exception as e:
-        print(f"Warning: Failed to send booking notifications: {e}")
-        # Continue even if notifications fail
+    except Exception:
+        pass
 
     # Generate reservation reference ID
     import uuid
@@ -512,60 +509,32 @@ def reservation_stats_view(request):
 @permission_classes([permissions.IsAuthenticated, IsReservationUser])
 def upload_payment_receipt_view(request, reservation_ref):
     """Upload payment receipt for a reservation"""
-    print(f"Upload receipt request received for reservation {reservation_ref}")
-    print(f"Request method: {request.method}")
-    print(f"Request FILES: {request.FILES}")
-    print(f"Request POST data: {request.POST}")
-    print(f"User: {request.user}")
-
     try:
         reservation = Reservation.objects.get(reference=reservation_ref)
-        print(f"Found reservation: {reservation.id} with reference: {reservation.reference}")
     except Reservation.DoesNotExist:
-        print(f"Reservation {reservation_ref} not found")
         return Response({'error': 'Reservation not found'}, status=status.HTTP_404_NOT_FOUND)
 
     receipt = request.FILES.get('receipt')
     if not receipt:
-        print("No receipt file in request")
         return Response({'error': 'Receipt file is required'}, status=status.HTTP_400_BAD_REQUEST)
-
-    print(f"Receipt file details: name={receipt.name}, size={receipt.size}, content_type={receipt.content_type}")
 
     # Update reservation with receipt
     try:
-        # Check if media directory exists and is writable
         import os
         from django.conf import settings
         media_root = settings.MEDIA_ROOT
-        print(f"Media root: {media_root}")
         
         if not os.path.exists(media_root):
-            print(f"Media directory does not exist, creating: {media_root}")
             os.makedirs(media_root, exist_ok=True)
-            print(f"Created media directory: {media_root}")
-        else:
-            print(f"Media directory exists: {media_root}")
-            print(f"Media directory writable: {os.access(media_root, os.W_OK)}")
         
-        # Create payment_receipts subdirectory
         receipt_dir = os.path.join(media_root, 'payment_receipts')
         if not os.path.exists(receipt_dir):
-            print(f"Creating receipt directory: {receipt_dir}")
             os.makedirs(receipt_dir, exist_ok=True)
-        
-        print(f"Attempting to save receipt file: {receipt.name}, size: {receipt.size}")
         
         reservation.payment_receipt = receipt
         reservation.receipt_uploaded_at = timezone.now()
         reservation.save()
-        
-        print(f"Receipt saved successfully at: {reservation.payment_receipt.path}")
-        print(f"Receipt URL: {reservation.payment_receipt.url}")
     except Exception as e:
-        print(f"Error saving receipt: {e}")
-        import traceback
-        traceback.print_exc()
         return Response({'error': f'Failed to save receipt: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     # Create notification for owner (with error handling)
@@ -579,16 +548,13 @@ def upload_payment_receipt_view(request, reservation_ref):
             action_url=f'/owner/reservations/{reservation.id}',
             related_object=reservation
         )
-        print("Notification created successfully")
-    except Exception as e:
-        print(f"Warning: Failed to create notification: {e}")
-        # Continue even if notification fails
+    except Exception:
+        pass
 
     response_data = {
         'message': 'Payment receipt uploaded successfully',
         'receipt_url': reservation.payment_receipt.url if reservation.payment_receipt else None
     }
-    print(f"Returning response: {response_data}")
     return Response(response_data)
 
 

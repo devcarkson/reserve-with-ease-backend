@@ -68,16 +68,9 @@ class ReservationCreateSerializer(serializers.ModelSerializer):
                   'payment_method', 'special_requests', 'estimated_arrival_time', 'flight_details')
 
     def validate(self, attrs):
-        print("[ReservationCreateSerializer.validate] raw attrs keys:", list(attrs.keys()))
-        try:
-            snapshot = {k: (str(v) if v is not None else None) for k, v in attrs.items()}
-            print("[ReservationCreateSerializer.validate] attrs snapshot:", snapshot)
-        except Exception as e:
-            print("[ReservationCreateSerializer.validate] snapshot error:", e)
         check_in = attrs['check_in']
         check_out = attrs['check_out']
         guests = attrs['guests']
-        print(f"[ReservationCreateSerializer.validate] check_in={check_in}, check_out={check_out}, guests={guests}, payment_method={attrs.get('payment_method')}")
 
         # Validate dates
         if check_in >= check_out:
@@ -95,7 +88,6 @@ class ReservationCreateSerializer(serializers.ModelSerializer):
                     if guests > room.max_guests:
                         raise serializers.ValidationError(f"Room can only accommodate {room.max_guests} guests")
                 except AttributeError:
-                    # If room doesn't have max_guests, skip this validation
                     pass
 
             # Check availability - skip for pay now since it's immediate payment
@@ -119,10 +111,6 @@ class ReservationCreateSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Room category is required")
             try:
                 room_category = RoomCategory.objects.get(id=room_category_id)
-                try:
-                    print(f"[ReservationCreateSerializer.validate] room_category_id={room_category_id}, name={room_category.name}, rooms={room_category.rooms.count()}")
-                except Exception as e:
-                    print("[ReservationCreateSerializer.validate] error logging room_category:", e)
 
                 # Find available rooms in this category
                 available_rooms = []
@@ -150,33 +138,24 @@ class ReservationCreateSerializer(serializers.ModelSerializer):
                         if room.type == room_category.name:
                             preferred_rooms.append(room)
 
-                print(f"[ReservationCreateSerializer.validate] available_rooms={len(available_rooms)}, preferred_rooms={len(preferred_rooms)}")
                 if not available_rooms:
                     raise serializers.ValidationError("No rooms available in this category for the selected dates")
 
                 # Use preferred room if available, otherwise any available room from the category
                 selected_room = preferred_rooms[0] if preferred_rooms else available_rooms[0]
-                try:
-                    print(f"[ReservationCreateSerializer.validate] selected_room_id={selected_room.id}, selected_room_name={selected_room.name}")
-                except Exception as e:
-                    print("[ReservationCreateSerializer.validate] error logging selected_room:", e)
                 attrs['room'] = selected_room
                 attrs['room_category'] = room_category
             except RoomCategory.DoesNotExist:
                 raise serializers.ValidationError("Room category not found")
             except Exception as e:
-                print(f"Error in room_category_id validation: {e}")
                 raise serializers.ValidationError(f"Error finding available room: {str(e)}")
 
         return attrs
 
     def create(self, validated_data):
-        print("[ReservationCreateSerializer.create] entering with keys:", list(validated_data.keys()))
         user = self.context['request'].user
         room = validated_data.get('room')
-        # Remove write-only helper so model init doesn't receive unexpected kwargs
         room_category_id = validated_data.pop('room_category_id', None)
-        print(f"[ReservationCreateSerializer.create] popped room_category_id={room_category_id}, room_id={getattr(room, 'id', None)}")
         check_in = validated_data['check_in']
         check_out = validated_data['check_out']
         guests = validated_data['guests']
@@ -190,28 +169,21 @@ class ReservationCreateSerializer(serializers.ModelSerializer):
             try:
                 rc = RoomCategory.objects.get(id=room_category_id)
                 total_price = rc.base_price * nights
-                print(f"[ReservationCreateSerializer.create] pricing via category base_price={rc.base_price} nights={nights}")
             except RoomCategory.DoesNotExist:
-                # Fallback to room price if available
                 if room:
                     total_price = room.price_per_night * nights
-                    print(f"[ReservationCreateSerializer.create] fallback pricing via room price_per_night={room.price_per_night} nights={nights}")
                 else:
-                    print("[ReservationCreateSerializer.create] invalid room_category_id and no room provided")
                     raise serializers.ValidationError("Invalid room category specified")
         else:
             if not room:
-                print("[ReservationCreateSerializer.create] missing room and no category provided")
                 raise serializers.ValidationError("Room must be specified")
             total_price = room.price_per_night * nights
-            print(f"[ReservationCreateSerializer.create] pricing via room price_per_night={room.price_per_night} nights={nights}")
 
         validated_data['user'] = user
         validated_data['total_price'] = total_price
 
         # Auto-confirm pay on arrival reservations
         if validated_data.get('payment_method') == 'pay_on_arrival':
-            print("[ReservationCreateSerializer.create] payment_method=pay_on_arrival -> set status=confirmed")
             validated_data['status'] = 'confirmed'
 
         # Generate unique reference
@@ -221,8 +193,6 @@ class ReservationCreateSerializer(serializers.ModelSerializer):
             if not Reservation.objects.filter(reference=reference).exists():
                 break
         validated_data['reference'] = reference
-        print("[ReservationCreateSerializer.create] final validated_data keys:", list(validated_data.keys()))
-        print("[ReservationCreateSerializer.create] total_price=", total_price)
         return super().create(validated_data)
 
 

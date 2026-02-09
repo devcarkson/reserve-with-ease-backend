@@ -42,34 +42,25 @@ class ConversationListView(generics.ListAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        print(f"DEBUG: ConversationListView - User {user.id} ({user.username}) is_staff: {getattr(user, 'is_staff', False)} is_superuser: {getattr(user, 'is_superuser', False)}")
         
         qs = Conversation.objects.filter(participants=user).distinct()
-        print(f"DEBUG: Base queryset count: {qs.count()}")
-        
-        # Debug: Print all conversations for this user
-        for conv in qs:
-            participants = [f"{p.username}({p.id})" for p in conv.participants.all()]
-            print(f"DEBUG: Conversation {conv.id} participants: {participants}")
         
         participant_type = self.request.query_params.get('participant_type')
-        print(f"DEBUG: participant_type filter: {participant_type}")
         
         # For admin users, show all conversations where admin is participant
         if getattr(user, 'is_staff', False) and getattr(user, 'is_superuser', False):
-            print(f"DEBUG: Admin user detected, returning all conversations where admin is participant")
             return qs
         
         # Filter for owners to show only conversations with guests when requested
         if participant_type == 'guest' and (getattr(user, 'role', None) == 'owner' or getattr(user, 'role', None) == 'single_owner'):
-            # Get conversations where at least one other participant is a guest (role='user')
             guest_conversations = []
             for conv in qs:
                 other_participants = conv.participants.exclude(id=user.id)
                 if other_participants.filter(role='user').exists():
                     guest_conversations.append(conv.id)
             qs = qs.filter(id__in=guest_conversations)
-            print(f"DEBUG: After guest filter count: {qs.count()}")
+
+        return qs
 
         # Optional: filter conversations related to a specific property via reservations
         prop_filter = self.request.query_params.get('property_filter')
@@ -139,7 +130,6 @@ class MessageListView(generics.ListAPIView):
         
         # Check if user is participant
         if conv.participants.filter(id=user.id).exists():
-            print(f"DEBUG: User is participant in conversation")
             return Message.objects.filter(
                 conversation_id=conversation_id,
                 deleted_at__isnull=True
@@ -148,13 +138,11 @@ class MessageListView(generics.ListAPIView):
         # Check if user is admin and this is an admin support conversation
         admin_user = User.objects.filter(is_staff=True, is_superuser=True).first()
         if admin_user and conv.participants.filter(id=admin_user.id).exists():
-            print(f"DEBUG: Admin support conversation access granted for user {user.id}")
             return Message.objects.filter(
                 conversation_id=conversation_id,
                 deleted_at__isnull=True
             )
         
-        print(f"DEBUG: Access denied for user {user.id} - not participant and not admin support conversation")
         from rest_framework.exceptions import PermissionDenied
         raise PermissionDenied("Not a participant of this conversation")
 
@@ -606,22 +594,18 @@ def create_admin_conversation_view(request):
     try:
         # Find any available admin user (staff + superuser)
         admin_user = User.objects.filter(is_staff=True, is_superuser=True).first()
-        print(f"DEBUG: Found admin user: {admin_user}")
         if not admin_user:
             return Response({'error': 'Admin user not found'}, status=status.HTTP_404_NOT_FOUND)
         
         initial_message = request.data.get('message', '')
         subject = request.data.get('subject', 'Support Request')
-        print(f"DEBUG: Creating conversation between {request.user} and {admin_user} with subject: {subject}")
         
         if not initial_message:
             return Response({'error': 'Message is required'}, status=status.HTTP_400_BAD_REQUEST)
         
         # Always create a new conversation for each new message with subject
-        # This ensures separate conversations for different topics
         conversation = Conversation.objects.create(subject=subject)
         conversation.participants.add(request.user, admin_user)
-        print(f"DEBUG: Created new conversation: {conversation.id} with subject: {subject}")
 
         # Send initial message
         message = Message.objects.create(
@@ -631,22 +615,17 @@ def create_admin_conversation_view(request):
             content=initial_message,
             message_type='text'
         )
-        print(f"DEBUG: Created message: {message.id}")
 
         conversation.last_message = message
         conversation.save()
         conversation.set_unread_count(admin_user, 1)
         conversation.save()
-        print(f"DEBUG: Updated conversation with message and unread count")
 
         return Response({
             'conversation_id': conversation.id,
             'message': MessageSerializer(message, context={'request': request}).data
         }, status=status.HTTP_201_CREATED)
     except Exception as e:
-        import traceback
-        print(f"Error in create_admin_conversation_view: {e}")
-        traceback.print_exc()
         return Response({'error': str(e)}, status=500)
 
 

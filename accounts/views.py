@@ -39,30 +39,19 @@ class RegisterView(generics.CreateAPIView):
 
     def create(self, request, *args, **kwargs):
         try:
-            print("=== REGISTRATION DEBUG START ===")
-            print("Register view called with data:", request.data)
-            print("Request headers:", dict(request.headers))
-            print("Request method:", request.method)
-            
             # Map frontend camelCase to backend snake_case
             data = request.data.copy()
             data['first_name'] = data.get('firstName', '')
             data['last_name'] = data.get('lastName', '')
             data['password_confirm'] = data.get('confirmPassword', data.get('password', ''))
-            # Don't override phone - let the serializer handle it with countryCode
             data['role'] = data.get('role', 'user')
-            print("Mapped data:", data)
 
             serializer = self.get_serializer(data=data)
-            print("Serializer created:", serializer.__class__.__name__)
             
             # Validate serializer with detailed error info
             try:
                 serializer.is_valid(raise_exception=True)
-                print("Serializer validated successfully")
-                print("Validated data:", serializer.validated_data)
             except serializers.ValidationError as e:
-                print("Serializer validation error:", e.detail)
                 return Response({
                     'error': 'Validation failed',
                     'details': e.detail
@@ -71,22 +60,12 @@ class RegisterView(generics.CreateAPIView):
             # Create user with detailed error handling
             try:
                 user = serializer.save()
-                print("User created successfully:", user)
-                print("User ID:", user.id)
-                print("User email:", user.email)
-                print("User phone after creation:", user.phone)
-                print("User phone from database (refresh):", User.objects.get(id=user.id).phone)
             except IntegrityError as e:
-                print("IntegrityError:", str(e))
                 return Response({
                     'error': 'User with this email already exists',
                     'details': str(e)
                 }, status=status.HTTP_400_BAD_REQUEST)
             except Exception as e:
-                print("Error creating user:", str(e))
-                print("Error type:", type(e).__name__)
-                import traceback
-                print("Traceback:", traceback.format_exc())
                 return Response({
                     'error': 'Failed to create user',
                     'details': str(e)
@@ -96,7 +75,6 @@ class RegisterView(generics.CreateAPIView):
             try:
                 if user.role == 'owner':
                     # Owners have already verified email via invitation, send welcome email
-                    print("Sending welcome email to owner")
                     if hasattr(settings, 'EMAIL_HOST_USER') and settings.EMAIL_HOST_USER and settings.EMAIL_HOST_USER != 'your-email@gmail.com':
                         try:
                             owner_type_display = "Multi-Property" if user.owner_type == 'multi' else "Single Property"
@@ -112,22 +90,15 @@ class RegisterView(generics.CreateAPIView):
                                 [user.email],
                                 fail_silently=False,
                             )
-                            print("Owner welcome email sent successfully")
-                        except Exception as e:
-                            print("Owner welcome email send error:", str(e))
+                        except Exception:
                             pass
-                    else:
-                        print("Email not configured, skipping welcome email")
                 else:
                     # Regular users need email verification
                     token = get_random_string(32)
-                    print("Creating email verification with token:", token)
                     EmailVerification.objects.create(user=user, token=token)
-                    print("Email verification created successfully")
 
                     # Send verification email
                     verification_url = f"{settings.FRONTEND_URL}/verify-email/{token}/"
-                    print("Verification URL:", verification_url)
 
                     if hasattr(settings, 'EMAIL_HOST_USER') and settings.EMAIL_HOST_USER and settings.EMAIL_HOST_USER != 'your-email@gmail.com':
                         try:
@@ -138,22 +109,15 @@ class RegisterView(generics.CreateAPIView):
                                 [user.email],
                                 fail_silently=False,
                             )
-                            print("Email verification sent successfully")
-                        except Exception as e:
-                            print("Email verification send error:", str(e))
+                        except Exception:
                             pass
-                    else:
-                        print("Email not configured, skipping verification email")
-            except Exception as e:
-                print("Error in email process:", str(e))
+            except Exception:
                 pass
 
             # Generate JWT tokens
             try:
                 refresh = RefreshToken.for_user(user)
-                print("JWT tokens generated successfully")
             except Exception as e:
-                print("Error generating tokens:", str(e))
                 return Response({
                     'error': 'Failed to generate authentication tokens',
                     'details': str(e)
@@ -162,9 +126,7 @@ class RegisterView(generics.CreateAPIView):
             # Serialize user data
             try:
                 user_data = UserSerializer(user).data
-                print("User serialized successfully")
-            except Exception as e:
-                print("Error serializing user:", str(e))
+            except Exception:
                 user_data = {'id': user.id, 'email': user.email, 'username': user.username}
 
             response_data = {
@@ -174,17 +136,9 @@ class RegisterView(generics.CreateAPIView):
                     'access': str(refresh.access_token),
                 }
             }
-            print("Returning response:", response_data)
-            print("=== REGISTRATION DEBUG END ===")
             return Response(response_data, status=status.HTTP_201_CREATED)
             
         except Exception as e:
-            print("=== UNEXPECTED ERROR ===")
-            print("Error:", str(e))
-            print("Error type:", type(e).__name__)
-            import traceback
-            print("Full traceback:", traceback.format_exc())
-            print("=== END UNEXPECTED ERROR ===")
             return Response({
                 'error': 'An unexpected error occurred during registration',
                 'details': str(e) if DEBUG else 'Please try again later'
@@ -194,39 +148,21 @@ class RegisterView(generics.CreateAPIView):
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
 def login_view(request):
-    print("=== LOGIN DEBUG START ===")
-    print("Login view called with data:", request.data)
-    print("Request headers:", dict(request.headers))
-    print("Request method:", request.method)
-
     serializer = UserLoginSerializer(data=request.data, context={'request': request})
-    try:
-        serializer.is_valid(raise_exception=True)
-        print("Login serializer validated successfully")
-    except serializers.ValidationError as e:
-        print("Login serializer validation error:", e.detail)
-        raise
+    serializer.is_valid(raise_exception=True)
 
     user = serializer.validated_data['user']
-    print("User authenticated:", user)
-    print("User email:", user.email)
-    print("User username:", user.username)
-    print("User 2FA enabled:", user.two_factor_enabled)
 
     # Check if 2FA is enabled
     if user.two_factor_enabled:
-        print("2FA is enabled, returning user info without tokens")
         response_data = {
             'user': UserSerializer(user).data,
             'message': '2FA verification required'
         }
-        print("Returning 2FA required response:", response_data)
-        print("=== LOGIN DEBUG END ===")
         return Response(response_data, status=status.HTTP_200_OK)
 
     # If 2FA is not enabled, generate tokens normally
     refresh = RefreshToken.for_user(user)
-    print("Tokens generated successfully")
 
     response_data = {
         'user': UserSerializer(user).data,
@@ -235,8 +171,6 @@ def login_view(request):
             'access': str(refresh.access_token),
         }
     }
-    print("Returning response:", response_data)
-    print("=== LOGIN DEBUG END ===")
     return Response(response_data)
 
 
@@ -285,21 +219,8 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         return UserSerializer
     
     def update(self, request, *args, **kwargs):
-        print("=== PROFILE UPDATE DEBUG ===")
-        print(f"Request method: {request.method}")
-        print(f"Request content type: {request.content_type}")
-        print(f"Request data: {request.data}")
-        print(f"Request FILES: {request.FILES}")
-        
-        try:
-            response = super().update(request, *args, **kwargs)
-            print("✅ Profile update successful")
-            return response
-        except Exception as e:
-            print(f"❌ Profile update error: {e}")
-            import traceback
-            traceback.print_exc()
-            raise
+        response = super().update(request, *args, **kwargs)
+        return response
 
 
 @api_view(['POST'])
@@ -474,10 +395,8 @@ def request_owner_invitation_view(request):
             [email],
             fail_silently=True,
         )
-        print(f"{owner_type_display} owner invitation email sent to {email}")
-    except Exception as e:
-        print(f"Failed to send owner invitation email: {e}")
-        # Continue even if email fails
+    except Exception:
+        pass
 
     return Response({'message': f'{owner_type_display} owner invitation sent successfully'}, status=status.HTTP_200_OK)
 
