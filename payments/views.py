@@ -24,9 +24,18 @@ class PaymentMethodViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAnyOwnerPermission]
 
     def get_queryset(self):
-        # Return all payment methods for owners (they can manage the global one)
+        # Return payment methods based on owner type
         if self.request.user.role == 'owner':
-            return PaymentMethod.objects.all()
+            if self.request.user.owner_type == 'single':
+                # Single owners see their multi-owner's payment method
+                from properties.models import Property
+                property_obj = Property.objects.filter(authorized_users=self.request.user).first()
+                if property_obj and property_obj.owner:
+                    return PaymentMethod.objects.filter(owner=property_obj.owner)
+                return PaymentMethod.objects.none()
+            else:
+                # Multi-owners see their own payment methods
+                return PaymentMethod.objects.filter(owner=self.request.user)
         return PaymentMethod.objects.none()
 
     def get_serializer_class(self):
@@ -35,8 +44,15 @@ class PaymentMethodViewSet(viewsets.ModelViewSet):
         return PaymentMethodSerializer
 
     def create(self, request, *args, **kwargs):
-        # For global payment method: delete all existing payment methods first
-        PaymentMethod.objects.all().delete()
+        # Single owners cannot create payment methods
+        if request.user.owner_type == 'single':
+            return Response(
+                {'error': 'Single owners cannot create payment methods. Please contact your property owner.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Delete existing payment method for this owner only
+        PaymentMethod.objects.filter(owner=self.request.user).delete()
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -47,6 +63,30 @@ class PaymentMethodViewSet(viewsets.ModelViewSet):
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
+        # Single owners cannot update payment methods - send notification to multi-owner
+        if request.user.owner_type == 'single':
+            try:
+                from properties.models import Property
+                from notifications.models import Notification
+                
+                property_obj = Property.objects.filter(authorized_users=request.user).first()
+                if property_obj and property_obj.owner:
+                    # Create notification for multi-owner
+                    Notification.objects.create(
+                        user=property_obj.owner,
+                        title='Payment Method Update Request',
+                        message=f'{request.user.first_name} {request.user.last_name} ({request.user.email}) attempted to update the payment method for {property_obj.name}. Please review and update if needed.',
+                        notification_type='payment',
+                        is_read=False
+                    )
+            except Exception as e:
+                print(f"Error creating notification: {e}")
+            
+            return Response(
+                {'error': 'Single owners cannot update payment methods. Your property owner has been notified of your request.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
 
@@ -60,10 +100,20 @@ class PaymentMethodViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def my_payment_method(self, request):
-        """Get the global payment method (for owners to manage)"""
+        """Get the owner's payment method (or multi-owner's for single owners)"""
         try:
-            # Return the active global payment method
-            payment_method = PaymentMethod.objects.filter(is_active=True).first()
+            if request.user.owner_type == 'single':
+                # Single owners get their multi-owner's payment method
+                from properties.models import Property
+                property_obj = Property.objects.filter(authorized_users=request.user).first()
+                if property_obj and property_obj.owner:
+                    payment_method = PaymentMethod.objects.filter(owner=property_obj.owner, is_active=True).first()
+                else:
+                    payment_method = None
+            else:
+                # Multi-owners get their own payment method
+                payment_method = PaymentMethod.objects.filter(owner=request.user, is_active=True).first()
+            
             if payment_method:
                 serializer = self.get_serializer(payment_method)
                 return Response(serializer.data)
@@ -144,52 +194,40 @@ class PaymentMethodViewSet(viewsets.ModelViewSet):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_owner_payment_method_view(request, owner_id):
-    """Get the global payment method for payment display (any owner can set/manage it)"""
-    print(f"DEBUG: Received owner_id: '{owner_id}' - looking for global payment method")
+    """Get the payment method for a specific owner"""
+    print(f"DEBUG: Received owner_id: '{owner_id}' - looking for owner's payment method")
 
-    # Look for any active payment method in the system (global payment method)
     try:
-        payment_method = PaymentMethod.objects.filter(is_active=True).first()
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        
+        # Get the owner user
+        owner = User.objects.filter(id=owner_id, role='owner').first()
+        if not owner:
+            print(f"DEBUG: Owner with id {owner_id} not found")
+            return Response(
+                {'message': 'Owner not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Get the owner's payment method
+        payment_method = PaymentMethod.objects.filter(owner=owner, is_active=True).first()
 
         if payment_method:
-            print(f"DEBUG: Found global active payment method: {payment_method.id} ({payment_method.payment_type}) owned by {payment_method.owner.email}")
+            print(f"DEBUG: Found payment method: {payment_method.id} ({payment_method.payment_type}) for owner {owner.email}")
             serializer = PaymentMethodSerializer(payment_method)
             return Response(serializer.data)
         else:
-            print(f"DEBUG: No active payment methods found in the system")
+            print(f"DEBUG: No active payment method found for owner {owner.email}")
             return Response(
-                {'message': 'No payment method configured. Please contact support.'},
+                {'message': 'No payment method configured. Please contact the property owner.'},
                 status=status.HTTP_404_NOT_FOUND
             )
     except Exception as e:
-        print(f"DEBUG: Error retrieving global payment method: {e}")
+        print(f"DEBUG: Error retrieving payment method: {e}")
+        import traceback
+        traceback.print_exc()
         return Response(
-            {'message': 'Error retrieving payment method'},
+            {'message': f'Error retrieving payment method: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-    @action(detail=False, methods=['post'])
-    def set_active(self, request):
-        """Set a payment method as active (global)"""
-        payment_method_id = request.data.get('id')
-        if not payment_method_id:
-            return Response(
-                {'error': 'Payment method ID is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        try:
-            payment_method = PaymentMethod.objects.get(id=payment_method_id)
-            # Deactivate all other payment methods (global)
-            PaymentMethod.objects.all().update(is_active=False)
-            # Activate the selected one
-            payment_method.is_active = True
-            payment_method.save()
-
-            serializer = self.get_serializer(payment_method)
-            return Response(serializer.data)
-        except PaymentMethod.DoesNotExist:
-            return Response(
-                {'error': 'Payment method not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )

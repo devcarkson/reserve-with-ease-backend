@@ -1,16 +1,21 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from . import views
 
 app_name = 'notifications'
 
-urlpatterns = [
-    # User notifications
-    path('', views.NotificationListView.as_view(), name='notification-list'),
-    path('<int:notification_id>/read/', views.mark_notification_read_view, name='mark-notification-read'),
-    path('mark-all-read/', views.mark_all_notifications_read_view, name='mark-all-read'),
-    path('count/', views.notification_count_view, name='notification-count'),
+# API Router for ViewSets
+router = DefaultRouter()
+router.register(r'templates', views.EmailTemplateViewSet, basename='email-template')
+router.register(r'notifications', views.EmailNotificationViewSet, basename='email-notification')
 
-    # Email templates (admin only)
-    path('templates/', views.EmailTemplateListView.as_view(), name='email-template-list'),
-    path('templates/<int:pk>/', views.EmailTemplateDetailView.as_view(), name='email-template-detail'),
+urlpatterns = [
+    # API endpoints for ViewSets
+    path('api/', include(router.urls)),
+    
+    # Email template generation API
+    path('generate/', views.generate_email_template, name='generate-email-template'),
+    
+    # Custom email sending API
+    path('send/', views.send_custom_email, name='send-custom-email'),
 ]

@@ -86,8 +86,8 @@ class IsOwner(permissions.BasePermission):
             # Multi-owners can manage properties they own or created
             return obj.owner == user or obj.created_by == user
         elif user.owner_type == 'single':
-            # Single owners can only manage their own properties
-            return obj.owner == user
+            # Single owners can manage properties they are authorized for
+            return user in obj.authorized_users.all()
         else:
             # Users with no owner_type have no permissions
             return False
@@ -324,8 +324,8 @@ class IsRoomOwner(permissions.BasePermission):
             # Multi-owners can manage rooms in properties they own or created
             return obj.property.owner == user or obj.property.created_by == user
         elif user.owner_type == 'single':
-            # Single owners can only manage rooms in their properties
-            return obj.property.owner == user
+            # Single owners can manage rooms in properties they are authorized for
+            return user in obj.property.authorized_users.all()
         else:
             # Users with no owner_type have no permissions
             return False
@@ -353,13 +353,13 @@ class RoomCategoryListCreateView(generics.ListCreateAPIView):
             return RoomCategory.objects.filter(
                 property_id=property_id
             ).filter(
-                Q(property__owner=user) | Q(property__created_by=user)
+                Q(property__authorized_users=user) | Q(property__created_by=user)
             )
         elif user.owner_type == 'single':
             # Single owners only see room categories for their properties
             return RoomCategory.objects.filter(
                 property_id=property_id,
-                property__owner=user
+                property__authorized_users=user
             )
         else:
             # Users with no owner_type see no room categories
@@ -419,11 +419,11 @@ class RoomCategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
         if user.owner_type == 'multi':
             # Multi-owners see room categories for properties they own or created
             return RoomCategory.objects.filter(
-                Q(property__owner=user) | Q(property__created_by=user)
+                Q(property__authorized_users=user) | Q(property__created_by=user)
             )
         elif user.owner_type == 'single':
             # Single owners only see room categories for their properties
-            return RoomCategory.objects.filter(property__owner=user)
+            return RoomCategory.objects.filter(property__authorized_users=user)
         else:
             # Users with no owner_type see no room categories
             return RoomCategory.objects.none()
@@ -444,8 +444,8 @@ def my_properties_view(request):
             Q(owner=user) | Q(created_by=user) | Q(authorized_users=user)
         ).distinct()
     elif user.owner_type == 'single':
-        # Single owners see only their own properties
-        properties = Property.objects.filter(owner=user)
+        # Single owners see properties they are authorized to manage
+        properties = Property.objects.filter(authorized_users=user)
     else:
         # Users with no owner_type see no properties
         properties = Property.objects.none()
@@ -458,40 +458,40 @@ def my_properties_view(request):
 @permission_classes([permissions.IsAuthenticated])
 def upload_property_image_view(request, property_id):
     try:
-        property_obj = Property.objects.get(id=property_id)
-    except Property.DoesNotExist:
-        return Response({'error': 'Property not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    if property_obj.owner != request.user:
-        return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
-    
-    image = request.FILES.get('image')
-    label = request.data.get('label', '')
-    is_main = request.data.get('is_main', 'false').lower() == 'true'
+        try:
+            property_obj = Property.objects.get(id=property_id)
+        except Property.DoesNotExist:
+            return Response({'error': 'Property not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+        if property_obj.owner != request.user:
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+        
+        image = request.FILES.get('image')
+        label = request.data.get('label', '')
+        is_main = request.data.get('is_main', 'false').lower() == 'true'
 
-    if not image:
-        return Response({'error': 'Image file is required'}, status=status.HTTP_400_BAD_REQUEST)
+        if not image:
+            return Response({'error': 'Image file is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Optimize the uploaded image
-    optimized_images = optimize_image_upload(image, 'property_image')
-
-    # If this is marked as main, unmark other images
-    if is_main:
-        PropertyImage.objects.filter(property=property_obj).update(is_main=False)
-
-    # Save the image using R2 storage
-    image_file = optimized_images['compressed'] or optimized_images['original']
-    image_path = r2_storage.save(f'property_images/{image_file.name}', image_file)
-    
-    property_image = PropertyImage.objects.create(
-        property=property_obj,
-        image=image_path,
-        label=label,
-        is_main=is_main
-    )
-    
-    serializer = PropertyImageSerializer(property_image)
-    return Response(serializer.data, status=status.HTTP_201_CREATED)
+        # Skip optimization for debugging - save original file directly
+        image_path = r2_storage.save(f'property_images/{image.name}', image)
+        
+        property_image = PropertyImage.objects.create(
+            property=property_obj,
+            image=image_path,
+            label=label,
+            is_main=is_main
+        )
+        
+        serializer = PropertyImageSerializer(property_image)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        import logging
+        import traceback
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error uploading property image: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return Response({'error': f'Server error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])

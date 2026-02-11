@@ -34,8 +34,8 @@ class IsReservationUser(permissions.BasePermission):
                         getattr(obj.property_obj, 'created_by', None) == request.user or 
                         request.user in obj.property_obj.authorized_users.all())
             else:
-                # Single owners can only access reservations for properties they own
-                return obj.property_obj.owner == request.user
+                # Single owners can access reservations for properties they're authorized to manage
+                return request.user in obj.property_obj.authorized_users.all()
         
         return False
 
@@ -243,7 +243,7 @@ def owner_reservations_view(request):
         ).distinct()
     else:
         # Single owners see only their own properties
-        queryset = Reservation.objects.filter(property_obj__owner=request.user)
+        queryset = Reservation.objects.filter(property_obj__authorized_users=request.user)
 
     # Filter by specific property if provided
     if property_id:
@@ -253,7 +253,7 @@ def owner_reservations_view(request):
             # For single-owners, verify ownership
             if request.user.owner_type != 'multi':
                 from properties.models import Property
-                Property.objects.get(id=property_id, owner=request.user)
+                Property.objects.get(id=property_id, authorized_users=request.user)
             queryset = queryset.filter(property_obj_id=property_id)
         except (ValueError, Property.DoesNotExist):
             return Response({'error': 'Invalid property ID'}, status=status.HTTP_400_BAD_REQUEST)
@@ -709,7 +709,7 @@ def performance_stats_view(request):
                 Q(property_obj__authorized_users=request.user)
             ).distinct()
         else:
-            queryset = Reservation.objects.filter(property_obj__owner=request.user)
+            queryset = Reservation.objects.filter(property_obj__authorized_users=request.user)
         
         # Apply time filtering for the specified period
         now = timezone.now()

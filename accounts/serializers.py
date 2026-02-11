@@ -26,7 +26,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         if 'firstName' in attrs:
             attrs['first_name'] = attrs.pop('firstName')
         if 'lastName' in attrs:
-            attrs.pop('lastName')
+            attrs['last_name'] = attrs.pop('lastName')
 
         # Merge phone number and country code
         phone = attrs.get('phone', '').strip()
@@ -101,8 +101,14 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
                 from properties.models import Property
                 property_obj = Property.objects.get(id=property_id)
                 property_obj.authorized_users.add(user)
-            except Exception:
-                pass
+                property_obj.save()
+                print(f"DEBUG: Successfully assigned property {property_id} to user {user.email}")
+            except Property.DoesNotExist:
+                print(f"ERROR: Property with id {property_id} does not exist")
+                raise serializers.ValidationError(f"Property with id {property_id} does not exist")
+            except Exception as e:
+                print(f"ERROR: Failed to assign property {property_id} to user: {str(e)}")
+                raise serializers.ValidationError(f"Failed to assign property: {str(e)}")
 
         return user
 
@@ -145,8 +151,8 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'phone',
-                  'role', 'status', 'email_verified', 'profile_picture',
+        fields = ('id', 'email', 'first_name', 'last_name', 'phone',
+                  'role', 'email_verified', 'profile_picture',
                   'created_at', 'updated_at', 'profile', 'owner_type',
                   'two_factor_enabled')
         read_only_fields = ('id', 'created_at', 'updated_at', 'email_verified', 'two_factor_enabled')
@@ -173,18 +179,42 @@ class UserSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
+        
+        # For single owners, return multi-owner's name, phone, and profile_picture
+        if instance.owner_type == 'single':
+            try:
+                from properties.models import Property
+                property_obj = Property.objects.filter(authorized_users=instance).first()
+                if property_obj and property_obj.owner:
+                    multi_owner = property_obj.owner
+                    data['first_name'] = multi_owner.first_name
+                    data['last_name'] = multi_owner.last_name
+                    data['phone'] = multi_owner.phone
+                    # Use multi-owner's profile picture
+                    if multi_owner.profile_picture:
+                        from django.conf import settings
+                        if settings.USE_R2:
+                            from properties.utils import convert_image_urls_to_public
+                            data['profile_picture'] = convert_image_urls_to_public([multi_owner.profile_picture.name])[0]
+                        else:
+                            data['profile_picture'] = multi_owner.profile_picture.url
+                    else:
+                        data['profile_picture'] = None
+            except Exception:
+                pass
+        else:
+            # Convert profile_picture to public R2 URL if R2 is enabled
+            if instance.profile_picture:
+                from django.conf import settings
+                if settings.USE_R2:
+                    from properties.utils import convert_image_urls_to_public
+                    data['profile_picture'] = convert_image_urls_to_public([instance.profile_picture.name])[0]
+                else:
+                    data['profile_picture'] = instance.profile_picture.url
+        
         # Only include owner_type for users with 'owner' role
         if instance.role != 'owner':
             data.pop('owner_type', None)
-        
-        # Convert profile_picture to public R2 URL if R2 is enabled
-        if instance.profile_picture:
-            from django.conf import settings
-            if settings.USE_R2:
-                from properties.utils import convert_image_urls_to_public
-                data['profile_picture'] = convert_image_urls_to_public([instance.profile_picture.name])[0]
-            else:
-                data['profile_picture'] = instance.profile_picture.url
         
         return data
 
@@ -212,38 +242,38 @@ class UserUpdateSerializer(serializers.ModelSerializer):
                     try:
                         profile_picture_path = r2_storage.save(f'profile_pics/{profile_picture_file.name}', profile_picture_file)
                         validated_data['profile_picture'] = profile_picture_path
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        # Log the error but don't fail the update
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"Error uploading profile picture to R2: {e}")
         
         # For single owners, update multi-owner's info instead
         if instance.owner_type == 'single':
-            try:
-                from properties.models import Property
-                property_obj = Property.objects.filter(authorized_users=instance).first()
-                if property_obj and property_obj.owner:
-                    multi_owner = property_obj.owner
-                    # Update multi-owner's user fields
-                    if 'first_name' in validated_data:
-                        multi_owner.first_name = validated_data.pop('first_name')
-                    if 'last_name' in validated_data:
-                        multi_owner.last_name = validated_data.pop('last_name')
-                    if 'phone' in validated_data:
-                        multi_owner.phone = validated_data.pop('phone')
-                    # Handle profile_picture separately if present
-                    if 'profile_picture' in validated_data:
-                        multi_owner.profile_picture = validated_data.pop('profile_picture')
-                    multi_owner.save()
-                    
-                    # Update multi-owner's profile
-                    if profile_data:
-                        multi_profile = multi_owner.profile
-                        for attr, value in profile_data.items():
-                            setattr(multi_profile, attr, value)
-                        multi_profile.save()
-                    
-                    return multi_owner
-            except Exception:
-                pass
+            from properties.models import Property
+            property_obj = Property.objects.filter(authorized_users=instance).first()
+            if property_obj and property_obj.owner:
+                multi_owner = property_obj.owner
+                # Update multi-owner's user fields
+                if 'first_name' in validated_data:
+                    multi_owner.first_name = validated_data.pop('first_name')
+                if 'last_name' in validated_data:
+                    multi_owner.last_name = validated_data.pop('last_name')
+                if 'phone' in validated_data:
+                    multi_owner.phone = validated_data.pop('phone')
+                # Handle profile_picture separately if present
+                if 'profile_picture' in validated_data:
+                    multi_owner.profile_picture = validated_data.pop('profile_picture')
+                multi_owner.save()
+                
+                # Update multi-owner's profile
+                if profile_data:
+                    multi_profile = multi_owner.profile
+                    for attr, value in profile_data.items():
+                        setattr(multi_profile, attr, value)
+                    multi_profile.save()
+                
+                return instance
         
         # Default behavior for multi owners
         # Update user fields
@@ -309,10 +339,10 @@ class TwoFactorSetupSerializer(serializers.Serializer):
     def validate_token(self, value):
         user = self.context['request'].user
         if not user.two_factor_secret:
-            raise serializers.ValidationError("2FA not set up. Please generate a secret first.")
+            raise serializers.ValidationError("2FA secret not generated. Please call /2fa/generate-secret/ first to get your QR code and secret.")
         
         if not user.verify_2fa_token(value):
-            raise serializers.ValidationError("Invalid verification code")
+            raise serializers.ValidationError("Invalid verification code. Please check your authenticator app and try again.")
         
         return value
     

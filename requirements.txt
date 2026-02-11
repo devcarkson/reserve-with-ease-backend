@@ -48,3 +48,4 @@ qrcode
 pillow
 pyotp
 boto3
+requests

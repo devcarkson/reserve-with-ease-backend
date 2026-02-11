@@ -34,7 +34,7 @@ DEBUG = config('DEBUG', default=True, cast=bool)
 USE_RELOADER = config('USE_RELOADER', default=False, cast=bool)
 
 ALLOWED_HOSTS = ['*']
-# CORS Settings for Cloudflare R2
+# CORS Settings
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8080",
@@ -50,6 +50,8 @@ CORS_ALLOWED_ORIGINS = [
     "https://franccj.com.ng",
     "http://franccj.com.ng",
 ]
+# Allow credentials for CORS
+CORS_ALLOW_CREDENTIALS = True
 
 # Application definition
 
@@ -84,8 +86,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
-    "reserve_at_ease.csp.CSPMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     # "django.middleware.csrf.CsrfViewMiddleware",
@@ -163,6 +165,12 @@ USE_TZ = True
 
 STATIC_URL = "/static/"
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# WhiteNoise configuration for serving static files on shared hosting
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+# Additional static file locations
+STATICFILES_DIRS = []
 
 
 # Cloudflare R2 Configuration
@@ -272,15 +280,53 @@ CORS_ALLOW_ALL_ORIGINS = False
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')
 
 # Email Configuration
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+# For testing, uncomment the console backend line below
+# EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')
+# # EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # For testing
 
+# EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
+# EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
+# EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
+# EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+# EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+# DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='Reservewithease <noreply@reservewithease.com>')
+# ADMIN_EMAIL = config('ADMIN_EMAIL', default='decarkson@gmail.com')
+
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
 EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
 EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
 EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
-DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='noreply@example.com')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='ReserveWithEase <janetadmob@gmail.com>')
 ADMIN_EMAIL = config('ADMIN_EMAIL', default='decarkson@gmail.com')
+
+
+# Email sender name
+EMAIL_SENDER_NAME = 'Reservewithease'
+
+# Email logging
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'django.core.mail': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    },
+}
 
 # AWS S3 Configuration (for production)
 USE_S3 = config('USE_S3', default=False, cast=bool)

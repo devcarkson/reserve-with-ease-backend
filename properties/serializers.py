@@ -34,7 +34,9 @@ class PropertyImageSerializer(serializers.ModelSerializer):
     def get_image_url(self, obj):
         if obj.image:
             # Convert to public R2 URL
-            return convert_image_urls_to_public([obj.image.name])[0]
+            # obj.image can be a string path or a FieldFile object
+            image_name = obj.image.name if hasattr(obj.image, 'name') else obj.image
+            return convert_image_urls_to_public([image_name])[0]
         return None
 
 
@@ -48,7 +50,9 @@ class RoomImageSerializer(serializers.ModelSerializer):
     def get_image_url(self, obj):
         if obj.image:
             # Convert to public R2 URL
-            return convert_image_urls_to_public([obj.image.name])[0]
+            # obj.image can be a string path or a FieldFile object
+            image_name = obj.image.name if hasattr(obj.image, 'name') else obj.image
+            return convert_image_urls_to_public([image_name])[0]
         return None
 
 

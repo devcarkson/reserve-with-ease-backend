@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to Reserve With Ease</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; line-height: 1.6; color: #333; background-color: #f4f4f4;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+    <tr>
+      <td align="center" style="padding: 20px 0;">
+        <table role="presentation" style="width: 600px; border-collapse: collapse; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+          <!-- Header with Logo -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #ee2128 50%, #3E4095 50%); padding: 30px 20px; text-align: center;">
+              <!-- Logo -->
+              <div style="margin-bottom: 15px;">
+                <img src="http://localhost:8080/ETTER.png" alt="Reserve With Ease" style="height: 50px; max-width: 200px;">
+              </div>
+              <p style="color: rgba(255,255,255,0.9); font-size: 14px; margin: 5px 0 0 0;">Your Trusted Property Booking Platform</p>
+            </td>
+          </tr>
+          
+          <!-- Main Content -->
+          <tr>
+            <td style="padding: 40px 30px;">
+              <div style="background: linear-gradient(135deg, #3E4095 100%); color: white; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 30px;">
+                <h2 style="margin: 0; font-size: 22px;"> Welcome to Reserve With Ease!</h2>
+              </div>
+              
+              <h2 style="color: #1f2937; margin-bottom: 10px;">Dear {{ first_name }},</h2>
+              <p style="font-size: 16px; margin-bottom: 20px;">
+                Welcome aboard! We're thrilled to have you join our community of property owners and travelers. 
+                Your account has been successfully created and you're ready to start using our platform.
+              </p>
+              
+              <!-- What's Next -->
+              <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+                <h3 style="color: #3E4095; margin: 0 0 15px 0; font-size: 18px;">What's Next?</h3>
+                <ul style="margin: 0; padding-left: 20px; color: #4b5563;">
+                  <li style="margin-bottom: 10px;">Complete your profile to build trust with guests</li>
+                  <li style="margin-bottom: 10px;">List your properties if you're an owner</li>
+                  <li style="margin-bottom: 10px;">Explore amazing properties if you're a guest</li>
+                  <li>Set up your preferences for a personalized experience</li>
+                </ul>
+              </div>
+              
+              <!-- CTA Button -->
+              <table role="presentation" style="border-collapse: collapse; width: 100%; margin: 30px 0;">
+                <tr>
+                  <td align="center">
+                    {% if user_role == 'owner' %}
+                    <a href="{{ frontend_url }}/owner" style="background: linear-gradient(135deg, #ee2128 50%, #3E4095 50%); color: white; padding: 15px 40px; text-decoration: none; border-radius: 6px; display: inline-block; font-size: 16px; font-weight: bold;">Go to Dashboard</a>
+                    {% else %}
+                    <a href="{{ frontend_url }}/search" style="background: linear-gradient(135deg, #Ed3237 50%, #3E4095 50%); color: white; padding: 15px 40px; text-decoration: none; border-radius: 6px; display: inline-block; font-size: 16px; font-weight: bold;">Browse Properties</a>
+                    {% endif %}
+                  </td>
+                </tr>
+              </table>
+              
+              <p style="font-size: 14px; color: #6b7280; text-align: center;">
+                If you have any questions, our support team is here to help!
+              </p>
+            </td>
+          </tr>
+          
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #f3f4f6; padding: 30px; text-align: center; border-top: 3px solid #Ed3237;">
+              <p style="color: #6b7280; font-size: 12px; margin: 0 0 10px 0;">© {% now "Y" %} Reserve With Ease. All rights reserved.</p>
+              <div style="margin-bottom: 10px;">
+                <a href="#" style="color: #3E4095; font-size: 12px; text-decoration: none; margin: 0 10px;">Privacy Policy</a>
+                <a href="#" style="color: #3E4095; font-size: 12px; text-decoration: none; margin: 0 10px;">Terms of Service</a>
+                <a href="#" style="color: #3E4095; font-size: 12px; text-decoration: none; margin: 0 10px;">Contact Support</a>
+              </div>
+              <p style="color: #9ca3af; font-size: 11px; margin: 15px 0 0 0;">
+                This email was sent to {{ email }}. 
+                If you didn't expect this email, you can safely ignore it.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

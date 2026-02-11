@@ -1,6 +1,11 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.conf import settings
+import pyotp
+import secrets
+import qrcode
+import io
+import base64
 
 
 class User(AbstractUser):
@@ -33,6 +38,54 @@ class User(AbstractUser):
     class Meta:
         verbose_name = 'user'
         verbose_name_plural = 'users'
+    
+    def generate_2fa_secret(self):
+        """Generate a new 2FA secret"""
+        secret = pyotp.random_base32()
+        self.two_factor_secret = secret
+        self.save()
+        return secret
+    
+    def get_2fa_qr_code(self, secret):
+        """Generate QR code for 2FA setup"""
+        totp_uri = pyotp.totp.TOTP(secret).provisioning_uri(
+            name=self.email,
+            issuer_name='ReserveWithEase'
+        )
+        
+        # Generate QR code
+        qr = qrcode.make(totp_uri)
+        buffer = io.BytesIO()
+        qr.save(buffer, format='PNG')
+        qr_code_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        
+        return f"data:image/png;base64,{qr_code_base64}"
+    
+    def generate_backup_codes(self):
+        """Generate backup codes for 2FA"""
+        backup_codes = []
+        for _ in range(10):
+            code = secrets.token_hex(4).upper()
+            backup_codes.append(code)
+        self.two_factor_backup_codes = backup_codes
+        self.save()
+        return backup_codes
+    
+    def verify_2fa_token(self, token):
+        """Verify a 2FA token"""
+        if not self.two_factor_secret:
+            return False
+        totp = pyotp.TOTP(self.two_factor_secret)
+        return totp.verify(token, valid_window=1)
+    
+    def verify_backup_code(self, code):
+        """Verify a backup code"""
+        if not self.two_factor_backup_codes or code not in self.two_factor_backup_codes:
+            return False
+        # Remove used backup code
+        self.two_factor_backup_codes.remove(code)
+        self.save()
+        return True
 
 
 class UserProfile(models.Model):
@@ -93,3 +146,31 @@ class Wishlist(models.Model):
 
     def __str__(self):
         return f"{self.user.username}'s wishlist - Property #{self.property_id}"
+
+
+# Signals for automatic cleanup
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
+
+
+@receiver(post_delete, sender=User)
+def cleanup_user_related_data(sender, instance, **kwargs):
+    """Clean up orphaned tokens when a user is deleted"""
+    try:
+        # Clean up EmailVerification records
+        deleted_ev = EmailVerification.objects.filter(user=instance).delete()
+        if deleted_ev[0] > 0:
+            print(f"Cleaned up {deleted_ev[0]} orphaned EmailVerification records")
+        
+        # Clean up PasswordReset records
+        deleted_pr = PasswordReset.objects.filter(user=instance).delete()
+        if deleted_pr[0] > 0:
+            print(f"Cleaned up {deleted_pr[0]} orphaned PasswordReset records")
+        
+        # Clean up Wishlist records
+        deleted_wl = Wishlist.objects.filter(user=instance).delete()
+        if deleted_wl[0] > 0:
+            print(f"Cleaned up {deleted_wl[0]} orphaned Wishlist records")
+            
+    except Exception as e:
+        print(f"Error cleaning up user-related data: {e}")

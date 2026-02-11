@@ -3,12 +3,11 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model
-from django.core.mail import send_mail
-from django.conf import settings
-from django.utils.crypto import get_random_string
 from django.contrib.auth import update_session_auth_hash
 from django.db import IntegrityError
 from django.utils import timezone
+from django.conf import settings
+from django.utils.crypto import get_random_string
 from .models import EmailVerification, PasswordReset, Wishlist
 from .serializers import (
     UserRegistrationSerializer, UserLoginSerializer, UserSerializer,
@@ -16,6 +15,9 @@ from .serializers import (
     EmailVerificationSerializer, TwoFactorSetupSerializer, TwoFactorVerifySerializer,
     TwoFactorDisableSerializer, TwoFactorRegenerateBackupCodesSerializer
 )
+
+# Get User model
+User = get_user_model()
 
 # Import R2 storage
 from reserve_at_ease.custom_storage import R2Storage
@@ -29,221 +31,225 @@ else:
 # Import DEBUG from settings for error handling
 DEBUG = settings.DEBUG
 
-User = get_user_model()
 
-
-class RegisterView(generics.CreateAPIView):
-    queryset = User.objects.all()
+class UserRegistrationView(generics.CreateAPIView):
+    """Handle user registration"""
     serializer_class = UserRegistrationSerializer
     permission_classes = [permissions.AllowAny]
+    parser_classes = [parsers.JSONParser, parsers.MultiPartParser, parsers.FormParser]
 
     def create(self, request, *args, **kwargs):
+        # Validate and create user
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Check if email already exists
+        email = request.data.get('email')
+        if email and User.objects.filter(email__iexact=email).exists():
+            return Response({
+                'error': 'A user with this email already exists'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if username already exists
+        username = request.data.get('username')
+        if username and User.objects.filter(username__iexact=username).exists():
+            return Response({
+                'error': 'A user with this username already exists'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create user with detailed error handling
         try:
-            # Map frontend camelCase to backend snake_case
-            data = request.data.copy()
-            data['first_name'] = data.get('firstName', '')
-            data['last_name'] = data.get('lastName', '')
-            data['password_confirm'] = data.get('confirmPassword', data.get('password', ''))
-            data['role'] = data.get('role', 'user')
-
-            serializer = self.get_serializer(data=data)
-            
-            # Validate serializer with detailed error info
-            try:
-                serializer.is_valid(raise_exception=True)
-            except serializers.ValidationError as e:
-                return Response({
-                    'error': 'Validation failed',
-                    'details': e.detail
-                }, status=status.HTTP_400_BAD_REQUEST)
-
-            # Create user with detailed error handling
-            try:
-                user = serializer.save()
-            except IntegrityError as e:
-                return Response({
-                    'error': 'User with this email already exists',
-                    'details': str(e)
-                }, status=status.HTTP_400_BAD_REQUEST)
-            except Exception as e:
-                return Response({
-                    'error': 'Failed to create user',
-                    'details': str(e)
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-            # Handle email verification or welcome based on user role
-            try:
-                if user.role == 'owner':
-                    # Owners have already verified email via invitation, send welcome email
-                    if hasattr(settings, 'EMAIL_HOST_USER') and settings.EMAIL_HOST_USER and settings.EMAIL_HOST_USER != 'your-email@gmail.com':
-                        try:
-                            owner_type_display = "Multi-Property" if user.owner_type == 'multi' else "Single Property"
-                            send_mail(
-                                f'Welcome to Reserve With Ease - {owner_type_display} Owner',
-                                f'Dear {user.first_name},\n\n'
-                                f'Welcome to Reserve With Ease! Your {owner_type_display.lower()} owner account has been successfully created.\n\n'
-                                f'You can now log in to your dashboard and start listing your properties.\n\n'
-                                f'Login URL: {settings.FRONTEND_URL}/owner/login\n\n'
-                                f'Best regards,\n'
-                                f'The Reserve With Ease Team',
-                                settings.DEFAULT_FROM_EMAIL,
-                                [user.email],
-                                fail_silently=False,
-                            )
-                        except Exception:
-                            pass
-                else:
-                    # Regular users need email verification
-                    token = get_random_string(32)
-                    EmailVerification.objects.create(user=user, token=token)
-
-                    # Send verification email
-                    verification_url = f"{settings.FRONTEND_URL}/verify-email/{token}/"
-
-                    if hasattr(settings, 'EMAIL_HOST_USER') and settings.EMAIL_HOST_USER and settings.EMAIL_HOST_USER != 'your-email@gmail.com':
-                        try:
-                            send_mail(
-                                'Verify your email address',
-                                f'Please click the following link to verify your email: {verification_url}',
-                                settings.DEFAULT_FROM_EMAIL,
-                                [user.email],
-                                fail_silently=False,
-                            )
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-
-            # Generate JWT tokens
-            try:
-                refresh = RefreshToken.for_user(user)
-            except Exception as e:
-                return Response({
-                    'error': 'Failed to generate authentication tokens',
-                    'details': str(e)
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-            # Serialize user data
-            try:
-                user_data = UserSerializer(user).data
-            except Exception:
-                user_data = {'id': user.id, 'email': user.email, 'username': user.username}
-
-            response_data = {
-                'user': user_data,
-                'tokens': {
-                    'refresh': str(refresh),
-                    'access': str(refresh.access_token),
-                }
-            }
-            return Response(response_data, status=status.HTTP_201_CREATED)
-            
+            user = serializer.save()
+        except IntegrityError as e:
+            return Response({
+                'error': 'User with this email already exists',
+                'details': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             return Response({
-                'error': 'An unexpected error occurred during registration',
-                'details': str(e) if DEBUG else 'Please try again later'
+                'error': 'Failed to create user',
+                'details': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+        # Handle email verification or welcome based on user role and verification status
+        try:
+            if user.role == 'owner' and not user.email_verified:
+                # Owners who haven't verified email need verification
+                print(f"DEBUG: Sending verification email to {user.email} (owner)")
+                token = get_random_string(32)
+                EmailVerification.objects.create(user=user, token=token)
+                verification_url = f"{settings.FRONTEND_URL}/verify-email/{token}/"
+                
+                # Send HTML email with verification link
+                try:
+                    _send_verification_email(user, verification_url)
+                    print(f"DEBUG: Verification email sent to {user.email}")
+                except Exception as e:
+                    print(f"Error sending verification email: {e}")
+            else:
+                # Regular users or verified owners get welcome email
+                print(f"DEBUG: Sending welcome email to {user.email}")
+                try:
+                    _send_welcome_email(user)
+                    print(f"DEBUG: Welcome email sent to {user.email}")
+                except Exception as e:
+                    print(f"Error sending welcome email: {e}")
+        except Exception as e:
+            print(f"Error in email handling: {e}")
 
-@api_view(['POST'])
-@permission_classes([permissions.AllowAny])
-def login_view(request):
-    serializer = UserLoginSerializer(data=request.data, context={'request': request})
-    serializer.is_valid(raise_exception=True)
-
-    user = serializer.validated_data['user']
-
-    # Check if 2FA is enabled
-    if user.two_factor_enabled:
-        response_data = {
-            'user': UserSerializer(user).data,
-            'message': '2FA verification required'
-        }
-        return Response(response_data, status=status.HTTP_200_OK)
-
-    # If 2FA is not enabled, generate tokens normally
-    refresh = RefreshToken.for_user(user)
-
-    response_data = {
-        'user': UserSerializer(user).data,
-        'tokens': {
-            'refresh': str(refresh),
-            'access': str(refresh.access_token),
-        }
-    }
-    return Response(response_data)
-
-
-@api_view(['POST'])
-@permission_classes([permissions.IsAuthenticated])
-def logout_view(request):
-    try:
-        refresh_token = request.data.get('refresh')
-        if refresh_token:
-            token = RefreshToken(refresh_token)
-            token.blacklist()
-        return Response({'message': 'Successfully logged out'}, status=status.HTTP_200_OK)
-    except Exception:
-        return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
-
-
-@api_view(['POST'])
-@permission_classes([permissions.AllowAny])
-def token_refresh_view(request):
-    try:
-        refresh_token = request.data.get('refresh')
-        if not refresh_token:
-            return Response({'error': 'Refresh token required'}, status=status.HTTP_400_BAD_REQUEST)
+        # Generate JWT tokens
+        try:
+            refresh = RefreshToken.for_user(user)
+        except Exception as e:
+            return Response({
+                'error': 'Failed to generate authentication tokens',
+                'details': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
-        token = RefreshToken(refresh_token)
-        access_token = str(token.access_token)
+        # Update user profile if provided
+        try:
+            if hasattr(user, 'profile'):
+                if request.data.get('phone'):
+                    user.profile.phone = request.data.get('phone')
+                if request.data.get('address'):
+                    user.profile.address = request.data.get('address')
+                if request.data.get('city'):
+                    user.profile.city = request.data.get('city')
+                if request.data.get('state'):
+                    user.profile.state = request.data.get('state')
+                if request.data.get('country'):
+                    user.profile.country = request.data.get('country')
+                if request.data.get('date_of_birth'):
+                    user.profile.date_of_birth = request.data.get('date_of_birth')
+                if request.data.get('profile_picture'):
+                    if r2_storage:
+                        # Upload to R2 using the save method
+                        try:
+                            from django.core.files.uploadedfile import UploadedFile
+                            file_obj = request.data.get('profile_picture')
+                            if isinstance(file_obj, UploadedFile):
+                                file_name = file_obj.name
+                            else:
+                                file_name = 'profile_picture'
+                            saved_path = r2_storage.save(f'profiles/{user.id}/{file_name}', file_obj)
+                            user.profile.profile_picture = saved_path
+                        except Exception as e:
+                            print(f"Error uploading profile picture to R2: {e}")
+                    else:
+                        user.profile.profile_picture = request.data.get('profile_picture')
+                user.profile.save()
+        except Exception as e:
+            # Log the error but don't fail registration
+            print(f"Error updating user profile: {e}")
+        
+        # Prepare response
+        user_data = UserSerializer(user).data
+        user_data.pop('password', None)  # Remove password from response
         
         return Response({
-            'access': access_token
-        }, status=status.HTTP_200_OK)
-    except Exception:
-        return Response({'error': 'Invalid refresh token'}, status=status.HTTP_400_BAD_REQUEST)
+            'message': 'User registered successfully',
+            'user': user_data,
+            'tokens': {
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+            }
+        }, status=status.HTTP_201_CREATED)
+
+
+class UserLoginView(generics.GenericAPIView):
+    """Handle user login"""
+    serializer_class = UserLoginSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        user = serializer.validated_data['user']
+        
+        # Check if user is active
+        if not user.is_active:
+            return Response({
+                'error': 'Your account has been deactivated. Please contact support.'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        
+        # Update last login
+        user.last_login = timezone.now()
+        user.save(update_fields=['last_login'])
+        
+        # Generate JWT tokens
+        refresh = RefreshToken.for_user(user)
+        
+        # Prepare user data
+        user_data = UserSerializer(user).data
+        user_data.pop('password', None)  # Remove password from response
+        
+        return Response({
+            'message': 'Login successful',
+            'user': user_data,
+            'tokens': {
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+            }
+        })
 
 
 class UserProfileView(generics.RetrieveUpdateAPIView):
+    """Handle user profile"""
     serializer_class = UserSerializer
     permission_classes = [permissions.IsAuthenticated]
-    parser_classes = [parsers.MultiPartParser, parsers.FormParser, parsers.JSONParser]
+    parser_classes = [parsers.JSONParser, parsers.MultiPartParser, parsers.FormParser]
 
     def get_object(self):
         return self.request.user
 
-    def get_serializer_class(self):
-        if self.request.method == 'PUT' or self.request.method == 'PATCH':
-            return UserUpdateSerializer
-        return UserSerializer
-    
     def update(self, request, *args, **kwargs):
-        response = super().update(request, *args, **kwargs)
-        return response
-
-
-@api_view(['POST'])
-@permission_classes([permissions.IsAuthenticated])
-def change_password_view(request):
-    serializer = PasswordChangeSerializer(data=request.data, context={'request': request})
-    serializer.is_valid(raise_exception=True)
-    serializer.save()
-    
-    # Update session to keep user logged in
-    update_session_auth_hash(request, request.user)
-    
-    return Response({'message': 'Password changed successfully'}, status=status.HTTP_200_OK)
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        
+        # Handle password update separately
+        if 'password' in request.data:
+            serializer = PasswordChangeSerializer(data=request.data, context={'request': request})
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            update_session_auth_hash(request, instance)  # Keep user logged in
+            return Response({
+                'message': 'Password updated successfully'
+            })
+        
+        # Use UserUpdateSerializer for all profile updates
+        serializer = UserUpdateSerializer(instance, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            # Refresh user data with updated profile
+            user_data = UserSerializer(instance).data
+            user_data.pop('password', None)
+            return Response({
+                'message': 'Profile updated successfully',
+                'user': user_data
+            })
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
-def request_password_reset_view(request):
-    serializer = PasswordResetSerializer(data=request.data)
-    serializer.is_valid(raise_exception=True)
+def password_reset_request_view(request):
+    """Handle password reset request"""
+    email = request.data.get('email')
     
-    email = serializer.validated_data['email']
-    user = User.objects.get(email=email)
+    if not email:
+        return Response({
+            'error': 'Email is required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        user = User.objects.get(email__iexact=email)
+    except User.DoesNotExist:
+        # Return success even if user doesn't exist (security)
+        return Response({
+            'message': 'Password reset email sent'
+        }, status=status.HTTP_200_OK)
     
     # Create password reset token
     token = get_random_string(32)
@@ -252,15 +258,9 @@ def request_password_reset_view(request):
     # Send reset email
     reset_url = f"{settings.FRONTEND_URL}/reset-password/{token}/"
     try:
-        send_mail(
-            'Reset your password',
-            f'Please click the following link to reset your password: {reset_url}',
-            settings.DEFAULT_FROM_EMAIL,
-            [user.email],
-            fail_silently=True,
-        )
-    except:
-        pass
+        send_password_reset_email(user, reset_url)
+    except Exception as e:
+        print(f"Error sending password reset email: {e}")
     
     return Response({'message': 'Password reset email sent'}, status=status.HTTP_200_OK)
 
@@ -268,6 +268,7 @@ def request_password_reset_view(request):
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
 def reset_password_view(request, token):
+    """Handle password reset confirmation"""
     try:
         password_reset = PasswordReset.objects.get(token=token, is_used=False)
         from django.utils import timezone
@@ -295,6 +296,7 @@ def reset_password_view(request, token):
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
 def verify_email_view(request, token):
+    """Verify user email"""
     try:
         email_verification = EmailVerification.objects.get(token=token, is_used=False)
         from django.utils import timezone
@@ -303,107 +305,155 @@ def verify_email_view(request, token):
             return Response({'error': 'Token has expired'}, status=status.HTTP_400_BAD_REQUEST)
 
         if email_verification.invitation_type == 'owner_invitation':
-            # For owner invitations, just mark as used and return success
-            # The frontend will handle the registration flow
+            # For owner invitations, return invitation details without marking as used yet
+            # The user needs to complete registration first
             email_verification.is_used = True
             email_verification.save()
+            
             return Response({
-                'message': 'Owner invitation verified successfully',
+                'message': 'Email verified successfully',
                 'invitation_type': 'owner_invitation',
                 'email': email_verification.email,
-                'owner_type': email_verification.owner_type,
+                'owner_type': email_verification.owner_type if hasattr(email_verification, 'owner_type') else 'single',
                 'property_id': email_verification.property_id
             }, status=status.HTTP_200_OK)
-        else:
-            # Regular email verification for existing users
-            user = email_verification.user
-            user.email_verified = True
-            user.save()
-
-            email_verification.is_used = True
-            email_verification.save()
-
-            return Response({'message': 'Email verified successfully'}, status=status.HTTP_200_OK)
-
+        
+        # Mark email as verified for regular users
+        user = email_verification.user
+        user.email_verified = True
+        user.is_active = True  # Activate the user
+        user.save()
+        
+        # Mark verification token as used
+        email_verification.is_used = True
+        email_verification.save()
+        
+        return Response({
+            'message': 'Email verified successfully. You can now login.'
+        }, status=status.HTTP_200_OK)
+        
     except EmailVerification.DoesNotExist:
         return Response({'error': 'Invalid token'}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def invitation_verification_view(request, token):
+    """Verify invitation token for invited owners"""
+    try:
+        invitation = EmailVerification.objects.get(token=token, invitation_type='owner_invitation', is_used=False)
+        
+        # Check if token is expired (7 days for invitations)
+        from django.utils import timezone
+        time_diff = timezone.now() - invitation.created_at
+        if time_diff.total_seconds() > 7 * 24 * 60 * 60:  # 7 days in seconds
+            return Response({'error': 'Invitation has expired'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get the invited email and owner type
+        invited_email = invitation.email
+        invitation_type = invitation.invitation_type
+        owner_type = invitation.owner_type if hasattr(invitation, 'owner_type') else 'single'
+        
+        return Response({
+            'message': 'Invitation verified successfully',
+            'email': invited_email,
+            'invitation_type': invitation_type,
+            'owner_type': owner_type
+        }, status=status.HTTP_200_OK)
+        
+    except EmailVerification.DoesNotExist:
+        return Response({'error': 'Invalid or expired invitation'}, status=status.HTTP_400_BAD_REQUEST)
+
+
 @api_view(['POST'])
 @permission_classes([permissions.AllowAny])
-def request_owner_invitation_view(request):
-    email = request.data.get('email')
-    owner_type = request.data.get('owner_type', 'multi')  # Default to multi-owner
-    property_id = request.data.get('property_id')
-
-    if not email:
-        return Response({'error': 'Email is required'}, status=status.HTTP_400_BAD_REQUEST)
-
-    if owner_type not in ['single', 'multi']:
-        return Response({'error': 'Invalid owner type'}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Check if user already exists
-    if User.objects.filter(email=email).exists():
-        user = User.objects.get(email=email)
-        if user.role == 'owner':
-            return Response({'error': 'Owner account already exists with this email'}, status=status.HTTP_400_BAD_REQUEST)
-        else:
-            return Response({'error': 'User account already exists with this email'}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Check for existing unused invitations and update them instead of rejecting
-    existing_invitation = EmailVerification.objects.filter(
-        email=email,
-        invitation_type='owner_invitation',
-        is_used=False
-    ).first()
-
-    if existing_invitation:
-        # Update existing invitation with new token and timestamp
-        token = get_random_string(32)
-        existing_invitation.token = token
-        existing_invitation.created_at = timezone.now()  # Update timestamp
-        existing_invitation.owner_type = owner_type  # Update owner type if changed
-        existing_invitation.property_id = property_id  # Update property_id
-        existing_invitation.save()
-    else:
-        # Create new invitation token
-        token = get_random_string(32)
-        EmailVerification.objects.create(
-            email=email,
-            token=token,
-            invitation_type='owner_invitation',
-            owner_type=owner_type,
-            property_id=property_id
-        )
-
-    # Determine verification URL based on owner type
-    if owner_type == 'single':
-        verification_url = f"{settings.FRONTEND_URL}/owner/single-verify-email?token={token}"
-    else:
-        verification_url = f"{settings.FRONTEND_URL}/owner/verify-email?token={token}"
-
-    # Send invitation email
-    owner_type_display = 'Single Property' if owner_type == 'single' else 'Multi-Property'
+def complete_owner_invitation_view(request, token):
+    """Complete owner invitation registration"""
     try:
-        send_mail(
-            f'{owner_type_display} Owner Registration Invitation',
-            f'You have been invited to register as a {owner_type_display.lower()} property owner.\n\n'
-            f'Please click the following link to verify your email and complete registration:\n\n'
-            f'{verification_url}\n\n'
-            f'This link will expire in 24 hours.',
-            settings.DEFAULT_FROM_EMAIL,
-            [email],
-            fail_silently=True,
+        invitation = EmailVerification.objects.get(token=token, invitation_type='owner_invitation', is_used=False)
+        
+        # Check if token is expired
+        from django.utils import timezone
+        time_diff = timezone.now() - invitation.created_at
+        if time_diff.total_seconds() > 7 * 24 * 60 * 60:
+            return Response({'error': 'Invitation has expired'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate required fields
+        required_fields = ['email', 'first_name', 'last_name', 'username', 'password']
+        for field in required_fields:
+            if not request.data.get(field):
+                return Response({
+                    'error': f'{field} is required'
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Verify email matches invitation
+        if request.data.get('email').lower() != invitation.email.lower():
+            return Response({
+                'error': 'Email does not match the invitation'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if email already exists
+        if User.objects.filter(email__iexact=request.data.get('email')).exists():
+            return Response({
+                'error': 'A user with this email already exists'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if username already exists
+        if User.objects.filter(username__iexact=request.data.get('username')).exists():
+            return Response({
+                'error': 'A user with this username already exists'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Create user
+        user = User.objects.create_user(
+            email=request.data.get('email'),
+            username=request.data.get('username'),
+            first_name=request.data.get('first_name'),
+            last_name=request.data.get('last_name'),
+            password=request.data.get('password'),
+            role='owner',
+            owner_type=invitation.owner_type if hasattr(invitation, 'owner_type') else 'single',
+            is_active=True,  # Invited users are already verified
+            email_verified=True
         )
-    except Exception:
-        pass
-
-    return Response({'message': f'{owner_type_display} owner invitation sent successfully'}, status=status.HTTP_200_OK)
+        
+        # Mark invitation as used
+        invitation.is_used = True
+        invitation.save()
+        
+        # Generate JWT tokens
+        refresh = RefreshToken.for_user(user)
+        
+        return Response({
+            'message': 'Registration completed successfully',
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'username': user.username,
+                'first_name': user.first_name,
+                'last_name': user.last_name,
+                'role': user.role,
+                'owner_type': user.owner_type,
+            },
+            'tokens': {
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+            }
+        }, status=status.HTTP_201_CREATED)
+        
+    except EmailVerification.DoesNotExist:
+        return Response({'error': 'Invalid or expired invitation'}, status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        return Response({
+            'error': 'Failed to complete registration',
+            'details': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def resend_verification_email_view(request):
+    """Resend verification email"""
     user = request.user
     if user.email_verified:
         return Response({'message': 'Email already verified'}, status=status.HTTP_400_BAD_REQUEST)
@@ -418,16 +468,10 @@ def resend_verification_email_view(request):
     # Send verification email
     verification_url = f"{settings.FRONTEND_URL}/verify-email/{token}/"
     try:
-        send_mail(
-            'Verify your email address',
-            f'Please click the following link to verify your email: {verification_url}',
-            settings.DEFAULT_FROM_EMAIL,
-            [user.email],
-            fail_silently=True,
-        )
-    except:
-        pass
-
+        _send_verification_email(user, verification_url)
+    except Exception as e:
+        print(f"Error sending verification email: {e}")
+    
     return Response({'message': 'Verification email sent'}, status=status.HTTP_200_OK)
 
 
@@ -439,17 +483,25 @@ def generate_2fa_secret_view(request):
     """Generate a new 2FA secret and QR code for the user"""
     user = request.user
     
-    # Generate new secret
-    secret = user.generate_2fa_secret()
-    
-    # Generate QR code
-    qr_code = user.get_2fa_qr_code(secret)
-    
-    return Response({
-        'secret': secret,
-        'qr_code': qr_code,
-        'message': '2FA secret generated. Please scan the QR code with Google Authenticator and verify with the code.'
-    }, status=status.HTTP_200_OK)
+    try:
+        # Generate new secret
+        secret = user.generate_2fa_secret()
+        
+        # Generate QR code
+        qr_code = user.get_2fa_qr_code(secret)
+        
+        return Response({
+            'secret': secret,
+            'qr_code': qr_code,
+            'message': '2FA secret generated. Please scan the QR code with Google Authenticator and verify with the code.'
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        import traceback
+        print(f"2FA secret generation error: {e}")
+        traceback.print_exc()
+        return Response({
+            'error': f'Failed to generate 2FA secret: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
@@ -465,59 +517,21 @@ def setup_2fa_view(request):
 
 
 @api_view(['POST'])
-@permission_classes([permissions.AllowAny])
+@permission_classes([permissions.IsAuthenticated])
 def verify_2fa_view(request):
-    """Verify 2FA token during login"""
-    email = request.data.get('email')
-    password = request.data.get('password')
-    
-    if not email or not password:
-        return Response({'error': 'Email and password are required'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    try:
-        user = User.objects.get(email__iexact=email)
-    except User.DoesNotExist:
-        return Response({'error': 'Invalid credentials'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    if not user.check_password(password):
-        return Response({'error': 'Invalid credentials'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    if not user.two_factor_enabled:
-        return Response({'error': '2FA is not enabled for this account'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    serializer = TwoFactorVerifySerializer(data=request.data, context={'user': user})
+    """Verify 2FA token during login or setup"""
+    serializer = TwoFactorVerifySerializer(data=request.data, context={'request': request})
     serializer.is_valid(raise_exception=True)
     
-    # Generate JWT tokens after successful 2FA verification
-    refresh = RefreshToken.for_user(user)
+    result = serializer.save()
     
-    return Response({
-        'user': UserSerializer(user).data,
-        'tokens': {
-            'refresh': str(refresh),
-            'access': str(refresh.access_token),
-        },
-        'message': '2FA verification successful'
-    }, status=status.HTTP_200_OK)
-
-
-@api_view(['GET'])
-@permission_classes([permissions.IsAuthenticated])
-def get_2fa_status_view(request):
-    """Get current 2FA status for the user"""
-    user = request.user
-    
-    return Response({
-        'two_factor_enabled': user.two_factor_enabled,
-        'has_backup_codes': len(user.two_factor_backup_codes) > 0 if user.two_factor_backup_codes else False,
-        'backup_codes_count': len(user.two_factor_backup_codes) if user.two_factor_backup_codes else 0,
-    }, status=status.HTTP_200_OK)
+    return Response(result, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def disable_2fa_view(request):
-    """Disable 2FA for the user"""
+    """Disable 2FA with password confirmation"""
     serializer = TwoFactorDisableSerializer(data=request.data, context={'request': request})
     serializer.is_valid(raise_exception=True)
     
@@ -529,7 +543,7 @@ def disable_2fa_view(request):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def regenerate_backup_codes_view(request):
-    """Regenerate backup codes for 2FA"""
+    """Regenerate 2FA backup codes"""
     serializer = TwoFactorRegenerateBackupCodesSerializer(data=request.data, context={'request': request})
     serializer.is_valid(raise_exception=True)
     
@@ -538,96 +552,447 @@ def regenerate_backup_codes_view(request):
     return Response(result, status=status.HTTP_200_OK)
 
 
-# Wishlist Views
-
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
-def get_wishlist_view(request):
-    """Get all wishlist items for the current user"""
-    from properties.serializers import PropertyListSerializer
-    from properties.models import Property
+def get_2fa_status_view(request):
+    """Get 2FA status for the current user"""
+    user = request.user
     
-    wishlist = Wishlist.objects.filter(user=request.user).order_by('-created_at')
-    property_ids = [w.property_id for w in wishlist]
-    properties = Property.objects.filter(id__in=property_ids)
-    serializer = PropertyListSerializer(properties, many=True)
-    return Response(serializer.data, status=status.HTTP_200_OK)
+    backup_codes_count = 0
+    if user.two_factor_backup_codes:
+        backup_codes_count = len(user.two_factor_backup_codes)
+    
+    return Response({
+        'two_factor_enabled': user.two_factor_enabled,
+        'has_backup_codes': backup_codes_count > 0,
+        'backup_codes_count': backup_codes_count,
+    }, status=status.HTTP_200_OK)
 
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def add_to_wishlist_view(request):
-    """Add a property to the user's wishlist"""
-    property_id = request.data.get('property_id')
-    if not property_id:
-        return Response({'error': 'Property ID is required'}, status=status.HTTP_400_BAD_REQUEST)
-    
+    """Add a property to user's wishlist"""
     try:
-        from properties.models import Property
-        Property.objects.get(id=property_id)
-    except Property.DoesNotExist:
-        return Response({'error': 'Property not found'}, status=status.HTTP_404_NOT_FOUND)
-    
-    wishlist, created = Wishlist.objects.get_or_create(
-        user=request.user,
-        property_id=property_id
-    )
-    
-    if created:
-        return Response({'message': 'Property added to wishlist'}, status=status.HTTP_201_CREATED)
-    else:
-        return Response({'message': 'Property already in wishlist'}, status=status.HTTP_200_OK)
+        property_id = request.data.get('property_id')
+        if not property_id:
+            return Response({
+                'error': 'property_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        wishlist, created = Wishlist.objects.get_or_create(
+            user=request.user,
+            property_id=property_id
+        )
+        
+        if created:
+            return Response({
+                'message': 'Property added to wishlist'
+            }, status=status.HTTP_201_CREATED)
+        else:
+            return Response({
+                'message': 'Property already in wishlist'
+            }, status=status.HTTP_200_OK)
+            
+    except Exception as e:
+        return Response({
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['DELETE'])
 @permission_classes([permissions.IsAuthenticated])
 def remove_from_wishlist_view(request, property_id):
-    """Remove a property from the user's wishlist"""
+    """Remove a property from user's wishlist"""
     try:
-        wishlist = Wishlist.objects.get(
+        deleted_count, _ = Wishlist.objects.filter(
             user=request.user,
             property_id=property_id
-        )
-        wishlist.delete()
-        return Response({'message': 'Property removed from wishlist'}, status=status.HTTP_200_OK)
-    except Wishlist.DoesNotExist:
-        return Response({'error': 'Property not in wishlist'}, status=status.HTTP_404_NOT_FOUND)
+        ).delete()
+        
+        if deleted_count > 0:
+            return Response({
+                'message': 'Property removed from wishlist'
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'error': 'Property not in wishlist'
+            }, status=status.HTTP_404_NOT_FOUND)
+            
+    except Exception as e:
+        return Response({
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
 def check_wishlist_view(request, property_id):
-    """Check if a property is in the user's wishlist"""
-    is_in_wishlist = Wishlist.objects.filter(
-        user=request.user,
-        property_id=property_id
-    ).exists()
-    
-    return Response({'is_in_wishlist': is_in_wishlist}, status=status.HTTP_200_OK)
+    """Check if a property is in user's wishlist"""
+    try:
+        is_in_wishlist = Wishlist.objects.filter(
+            user=request.user,
+            property_id=property_id
+        ).exists()
+        
+        return Response({
+            'is_in_wishlist': is_in_wishlist
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def toggle_wishlist_view(request):
-    """Toggle a property's wishlist status"""
-    property_id = request.data.get('property_id')
-    if not property_id:
-        return Response({'error': 'Property ID is required'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    wishlist = Wishlist.objects.filter(
-        user=request.user,
-        property_id=property_id
-    ).first()
-    
-    if wishlist:
-        wishlist.delete()
-        return Response({'is_in_wishlist': False, 'message': 'Property removed from wishlist'}, status=status.HTTP_200_OK)
-    else:
-        try:
-            from properties.models import Property
-            Property.objects.get(id=property_id)
-        except Property.DoesNotExist:
-            return Response({'error': 'Property not found'}, status=status.HTTP_404_NOT_FOUND)
+    """Toggle a property in user's wishlist"""
+    try:
+        property_id = request.data.get('property_id')
+        if not property_id:
+            return Response({
+                'error': 'property_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
         
-        Wishlist.objects.create(user=request.user, property_id=property_id)
-        return Response({'is_in_wishlist': True, 'message': 'Property added to wishlist'}, status=status.HTTP_201_CREATED)
+        existing = Wishlist.objects.filter(
+            user=request.user,
+            property_id=property_id
+        ).first()
+        
+        if existing:
+            # Remove from wishlist
+            existing.delete()
+            return Response({
+                'is_in_wishlist': False,
+                'message': 'Property removed from wishlist'
+            }, status=status.HTTP_200_OK)
+        else:
+            # Add to wishlist
+            Wishlist.objects.create(
+                user=request.user,
+                property_id=property_id
+            )
+            return Response({
+                'is_in_wishlist': True,
+                'message': 'Property added to wishlist'
+            }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response({
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def get_wishlist_view(request):
+    """Get user's wishlist"""
+    try:
+        wishlist = Wishlist.objects.filter(user=request.user)
+        
+        # Get property data using property_id
+        from properties.models import Property
+        wishlist_data = []
+        for item in wishlist:
+            try:
+                # Fetch property by ID
+                property_obj = Property.objects.filter(id=item.property_id, status='active').first()
+                if property_obj:
+                    # Get pricing info using same logic as PropertyListSerializer
+                    from django.utils import timezone
+                    today = timezone.now().date()
+                    
+                    # Calculate effective price (minimum from room categories with discounts)
+                    prices = []
+                    for room_category in property_obj.room_categories.all():
+                        if room_category.base_price and room_category.base_price > 0:
+                            effective_price = room_category.get_effective_price()
+                            if effective_price and effective_price > 0:
+                                prices.append(effective_price)
+                    
+                    # Get minimum effective price or fallback to property price
+                    effective_price = min(prices) if prices else (float(property_obj.price_per_night) if property_obj.price_per_night and float(property_obj.price_per_night) > 0 else 0)
+                    
+                    # Get original price (minimum base price from room categories)
+                    base_prices = []
+                    for room_category in property_obj.room_categories.all():
+                        if room_category.base_price and room_category.base_price > 0:
+                            base_prices.append(float(room_category.base_price))
+                    
+                    original_price = min(base_prices) if base_prices else (float(property_obj.price_per_night) if property_obj.price_per_night and float(property_obj.price_per_night) > 0 else 0)
+                    
+                    # Check for active discounts
+                    has_category_discount = property_obj.room_categories.filter(
+                        has_discount=True,
+                        discount_start_date__lte=today,
+                        discount_end_date__gte=today
+                    ).exists()
+                    
+                    has_availability_discount = property_obj.availability.filter(
+                        has_discount=True
+                    ).exists()
+                    
+                    has_discount = has_category_discount or has_availability_discount
+                    
+                    # Get highest discount percentage
+                    discount_category = property_obj.room_categories.filter(
+                        has_discount=True,
+                        discount_start_date__lte=today,
+                        discount_end_date__gte=today
+                    ).order_by('-discount_percentage').first()
+                    
+                    discount_percentage = discount_category.discount_percentage if discount_category else 0
+                    
+                    property_data = {
+                        'id': property_obj.id,
+                        'name': property_obj.name,
+                        'type': property_obj.type,
+                        'description': property_obj.description,
+                        'location': {
+                            'address': property_obj.address,
+                            'city': property_obj.city,
+                            'country': property_obj.country,
+                            'coordinates': {
+                                'lat': property_obj.latitude,
+                                'lng': property_obj.longitude
+                            }
+                        },
+                        'price_per_night': effective_price,
+                        'original_price': original_price if has_discount else None,
+                        'currency': property_obj.currency,
+                        'images': property_obj.images[:5] if property_obj.images else [],
+                        'rating': property_obj.rating,
+                        'review_count': property_obj.review_count,
+                        'amenities': property_obj.amenities if property_obj.amenities else [],
+                        'highlights': property_obj.highlights if property_obj.highlights else [],
+                        'free_cancellation': property_obj.free_cancellation,
+                        'breakfast_included': property_obj.breakfast_included,
+                        'featured': property_obj.featured,
+                        'owner': property_obj.owner.id,
+                        'status': property_obj.status,
+                        'has_discount': has_discount,
+                        'discount_percentage': discount_percentage,
+                        'is_discount_active': has_discount,
+                        'created_at': property_obj.created_at.isoformat(),
+                        'updated_at': property_obj.updated_at.isoformat(),
+                    }
+                    wishlist_data.append(property_data)
+            except Exception as e:
+                print(f"Error fetching property {item.property_id}: {e}")
+                continue
+        
+        return Response({
+            'wishlist': wishlist_data,
+            'count': len(wishlist_data)
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Additional views needed by urls.py
+
+from rest_framework_simplejwt.tokens import AccessToken
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def token_refresh_view(request):
+    """Refresh access token using refresh token"""
+    from rest_framework_simplejwt.tokens import RefreshToken
+    
+    refresh_token = request.data.get('refresh')
+    if not refresh_token:
+        return Response({
+            'error': 'Refresh token is required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        refresh = RefreshToken(refresh_token)
+        access_token = str(refresh.access_token)
+        return Response({
+            'access': access_token
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'error': 'Invalid refresh token'
+        }, status=status.HTTP_401_UNAUTHORIZED)
+
+
+# Additional endpoints needed by frontend
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def logout_view(request):
+    """Handle user logout - blacklists the refresh token"""
+    try:
+        refresh_token = request.data.get('refresh')
+        if refresh_token:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+        return Response({
+            'message': 'Logged out successfully'
+        }, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({
+            'message': 'Logged out successfully'
+        }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def change_password_view(request):
+    """Change user password"""
+    from django.contrib.auth.password_validation import validate_password
+    from django.core.exceptions import ValidationError
+    
+    user = request.user
+    old_password = request.data.get('current_password')
+    new_password = request.data.get('new_password')
+    new_password_confirm = request.data.get('new_password_confirm')
+    
+    if not old_password or not new_password:
+        return Response({
+            'error': 'Please provide both old and new password'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if new_password != new_password_confirm:
+        return Response({
+            'error': 'New passwords do not match'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    if not user.check_password(old_password):
+        return Response({
+            'error': 'Current password is incorrect'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        validate_password(new_password, user)
+    except ValidationError as e:
+        return Response({
+            'error': e.messages
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    user.set_password(new_password)
+    user.save()
+    
+    return Response({
+        'message': 'Password changed successfully'
+    }, status=status.HTTP_200_OK)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+def request_owner_invitation_view(request):
+    """Request an invitation to become an owner"""
+    email = request.data.get('email')
+    owner_type = request.data.get('owner_type', 'single')
+    property_id = request.data.get('property_id')
+    
+    if not email:
+        return Response({
+            'error': 'Email is required'
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        from django.contrib.auth.tokens import default_token_generator
+        from django.utils.http import urlsafe_base64_encode
+        from django.utils.encoding import force_bytes
+        from django.utils.crypto import get_random_string
+        
+        User = get_user_model()
+        
+        # Check if user already exists
+        existing_user = User.objects.filter(email__iexact=email).first()
+        
+        if existing_user:
+            # User exists - check if already an owner
+            if existing_user.role == 'owner':
+                return Response({
+                    'message': 'You are already registered as an owner',
+                    'is_owner': True
+                }, status=status.HTTP_200_OK)
+            
+            # User exists but not an owner - check for pending invitation
+            pending_invitation = EmailVerification.objects.filter(
+                email__iexact=email,
+                invitation_type='owner_invitation',
+                is_used=False
+            ).first()
+            
+            if pending_invitation:
+                # Resend invitation
+                token = pending_invitation.token
+            else:
+                # Create new invitation
+                token = get_random_string(32)
+                EmailVerification.objects.create(
+                    email=email,
+                    token=token,
+                    invitation_type='owner_invitation',
+                    owner_type=owner_type,
+                    property_id=property_id
+                )
+        else:
+            # User doesn't exist - create invitation for new user registration
+            token = get_random_string(32)
+            EmailVerification.objects.create(
+                email=email,
+                token=token,
+                invitation_type='owner_invitation',
+                owner_type=owner_type,
+                property_id=property_id
+            )
+        
+        # Generate invitation URL based on owner_type
+        uidb64 = urlsafe_base64_encode(force_bytes(0))  # Use 0 since user might not exist yet
+        if owner_type == 'single':
+            invitation_url = f"{settings.FRONTEND_URL}/owner/single-verify-email?token={token}"
+        else:
+            invitation_url = f"{settings.FRONTEND_URL}/owner/verify-email?token={token}"
+        
+        if property_id:
+            invitation_url += f"&property_id={property_id}"
+        
+        # Send invitation email (using the same wrapper function as verification emails)
+        try:
+            # Create a dummy user object for the email template
+            class DummyUser:
+                def __init__(self, email, owner_type):
+                    self.email = email
+                    self.first_name = ''
+                    self.last_name = ''
+                    self.username = email.split('@')[0]
+                    self.owner_type = owner_type
+                    
+            dummy_user = DummyUser(email, owner_type)
+            _send_verification_email(dummy_user, invitation_url)
+        except Exception as email_error:
+            print(f"Error sending invitation email: {email_error}")
+        
+        return Response({
+            'message': 'Invitation sent successfully. Please check your email to complete registration.',
+            'invitation_type': owner_type,
+            'property_id': property_id
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# Import email functions at the end to avoid circular imports
+def _send_verification_email(user, verification_url):
+    """Wrapper for sending verification email - imported from notifications.utils"""
+    from notifications.utils import send_email_verification_email
+    return send_email_verification_email(user, verification_url)
+
+
+def _send_welcome_email(user):
+    """Wrapper for sending welcome email - imported from notifications.utils"""
+    from notifications.utils import send_welcome_email
+    return send_welcome_email(user)
