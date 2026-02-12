@@ -1,0 +1,13 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls %}
+
+{% block userlinks %}
+{{ block.super }}
+{% if request.user.is_superuser %}
+<span class="separator">|</span>
+<a href="{{ frontend_messages_url }}" target="_blank" class="history-link">
+    <i class="fas fa-comments"></i>
+    {% trans 'Messages' %}
+</a>
+{% endif %}
+{% endblock %}

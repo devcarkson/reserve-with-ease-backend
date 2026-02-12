@@ -60,12 +60,15 @@ class ReservationCreateSerializer(serializers.ModelSerializer):
     room_category_id = serializers.IntegerField(write_only=True, required=False)
     room = serializers.PrimaryKeyRelatedField(queryset=Room.objects.all(), required=False)
     room_category = serializers.PrimaryKeyRelatedField(read_only=True)
+    original_price = serializers.ReadOnlyField()
+    discount_percentage = serializers.ReadOnlyField()
 
     class Meta:
         model = Reservation
         fields = ('property_obj', 'room', 'room_category', 'room_category_id', 'check_in', 'check_out', 'guests',
                   'guest_first_name', 'guest_last_name', 'guest_email', 'guest_phone',
-                  'payment_method', 'special_requests', 'estimated_arrival_time', 'flight_details')
+                  'payment_method', 'special_requests', 'estimated_arrival_time', 'flight_details',
+                  'total_price', 'original_price', 'discount_percentage')
 
     def validate(self, attrs):
         check_in = attrs['check_in']
@@ -160,27 +163,42 @@ class ReservationCreateSerializer(serializers.ModelSerializer):
         check_out = validated_data['check_out']
         guests = validated_data['guests']
 
-        # Calculate total price
+        # Calculate total price with discounts
         nights = (check_out - check_in).days
         total_price = 0
+        base_price = 0
+        has_discount = False
+        discount_percentage = 0
 
-        # Use category base price for total calculation if category was used
+        # Use category effective price for total calculation if category was used
         if room_category_id:
             try:
                 rc = RoomCategory.objects.get(id=room_category_id)
-                total_price = rc.base_price * nights
+                base_price = float(rc.base_price)
+                # Check if discount is active
+                if rc.has_discount and rc.is_discount_active():
+                    has_discount = True
+                    discount_percentage = float(rc.discount_percentage) if rc.discount_percentage else 0
+                    effective_price = rc.get_effective_price()
+                else:
+                    effective_price = base_price
+                total_price = effective_price * nights
             except RoomCategory.DoesNotExist:
                 if room:
+                    base_price = float(room.price_per_night)
                     total_price = room.price_per_night * nights
                 else:
                     raise serializers.ValidationError("Invalid room category specified")
         else:
             if not room:
                 raise serializers.ValidationError("Room must be specified")
+            base_price = float(room.price_per_night)
             total_price = room.price_per_night * nights
 
         validated_data['user'] = user
         validated_data['total_price'] = total_price
+        validated_data['original_price'] = base_price * nights
+        validated_data['discount_percentage'] = discount_percentage
 
         # Auto-confirm pay on arrival reservations
         if validated_data.get('payment_method') == 'pay_on_arrival':
@@ -220,11 +238,16 @@ class ReservationListSerializer(serializers.ModelSerializer):
     is_active = serializers.ReadOnlyField()
     receipt_url = serializers.SerializerMethodField()
     download_receipt_url = serializers.SerializerMethodField()
+    has_discount = serializers.SerializerMethodField()
+    discount_percentage = serializers.SerializerMethodField()
+    original_price = serializers.SerializerMethodField()
+    effective_price = serializers.SerializerMethodField()
 
     class Meta:
         model = Reservation
         fields = ('id', 'property_obj', 'property_name', 'property_city', 'property_location', 'property_image', 'property_rating', 'property_review_count', 'property_owner',
                  'room', 'room_name', 'room_type', 'user', 'user_name', 'check_in', 'check_out', 'guests', 'total_price',
+                 'original_price', 'effective_price', 'has_discount', 'discount_percentage',
                  'status', 'payment_method', 'payment_status', 'amount_paid', 'created_at', 'nights', 'is_paid', 'is_active',
                  'receipt_url', 'download_receipt_url')
 
@@ -275,6 +298,81 @@ class ReservationListSerializer(serializers.ModelSerializer):
             return obj.room_category.name  # or some type field
         return obj.room.type if obj.room else ''
 
+    def get_has_discount(self, obj):
+        """Check if reservation has any active discounts"""
+        # Use stored value first, then calculate if needed
+        if obj.discount_percentage and float(obj.discount_percentage) > 0:
+            return True
+        
+        from django.utils import timezone
+        today = timezone.now().date()
+        
+        # Check room category for active discounts
+        if obj.room_category:
+            if obj.room_category.has_discount:
+                if obj.room_category.discount_start_date and obj.room_category.discount_end_date:
+                    if obj.room_category.discount_start_date <= today <= obj.room_category.discount_end_date:
+                        return True
+        
+        # Check property availability for discounts on the check-in date
+        if obj.check_in:
+            has_availability_discount = obj.property_obj.availability.filter(
+                date=obj.check_in,
+                has_discount=True
+            ).exists()
+            if has_availability_discount:
+                return True
+        
+        return False
+
+    def get_discount_percentage(self, obj):
+        """Get highest discount percentage"""
+        # Use stored value first
+        if obj.discount_percentage and float(obj.discount_percentage) > 0:
+            return int(float(obj.discount_percentage))
+        
+        from django.utils import timezone
+        today = timezone.now().date()
+        
+        # Check room category for active discounts
+        if obj.room_category:
+            if obj.room_category.has_discount:
+                if obj.room_category.discount_start_date and obj.room_category.discount_end_date:
+                    if obj.room_category.discount_start_date <= today <= obj.room_category.discount_end_date:
+                        return int(obj.room_category.discount_percentage) if obj.room_category.discount_percentage else 0
+        
+        # Check property availability for discounts
+        if obj.check_in:
+            availability = obj.property_obj.availability.filter(
+                date=obj.check_in,
+                has_discount=True
+            ).first()
+            if availability and availability.discount_percentage:
+                return int(availability.discount_percentage)
+        
+        return 0
+
+    def get_original_price(self, obj):
+        """Get original/base price before discount"""
+        # Use stored value first
+        if obj.original_price and float(obj.original_price) > 0:
+            return float(obj.original_price)
+        
+        # Fallback to calculation
+        if obj.room_category:
+            return float(obj.room_category.base_price)
+        if obj.room:
+            return float(obj.room.price_per_night)
+        return float(obj.total_price)
+
+    def get_effective_price(self, obj):
+        """Get effective price with discount applied"""
+        original = self.get_original_price(obj)
+        if self.get_has_discount(obj):
+            discount = self.get_discount_percentage(obj)
+            return original * (1 - discount / 100)
+        return original
+
 
 class OwnerReservationSerializer(serializers.ModelSerializer):
     property = serializers.IntegerField(source='property_obj.id', read_only=True)
@@ -286,12 +384,18 @@ class OwnerReservationSerializer(serializers.ModelSerializer):
     guest_name = serializers.SerializerMethodField()
     room_name = serializers.SerializerMethodField()
     owner_user_id = serializers.IntegerField(source='property_obj.owner.id', read_only=True)
+    has_discount = serializers.SerializerMethodField()
+    discount_percentage = serializers.SerializerMethodField()
+    original_price = serializers.SerializerMethodField()
+    effective_price = serializers.SerializerMethodField()
 
     class Meta:
         model = Reservation
         fields = ('id', 'property', 'property_name', 'property_location', 'property_image',
-                 'user', 'room', 'room_name', 'check_in', 'check_out', 'guests', 'total_price', 'status', 'payment_status',
-                 'created_at', 'updated_at', 'guest_info', 'payment', 'guest_name', 'reference', 'owner_user_id')
+                 'user', 'room', 'room_name', 'check_in', 'check_out', 'guests', 'total_price',
+                 'original_price', 'effective_price', 'has_discount', 'discount_percentage',
+                 'status', 'payment_status', 'created_at', 'updated_at', 'guest_info', 'payment', 
+                 'guest_name', 'reference', 'owner_user_id')
 
     def get_property_location(self, obj):
         return f"{obj.property_obj.city}, {obj.property_obj.country}"
@@ -327,6 +431,68 @@ class OwnerReservationSerializer(serializers.ModelSerializer):
         if obj.room_category:
             return obj.room_category.name
         return obj.room.name if obj.room else ''
+
+    def get_has_discount(self, obj):
+        """Check if reservation has any active discounts"""
+        from django.utils import timezone
+        today = timezone.now().date()
+        
+        # Check room category for active discounts
+        if obj.room_category:
+            if obj.room_category.has_discount:
+                if obj.room_category.discount_start_date and obj.room_category.discount_end_date:
+                    if obj.room_category.discount_start_date <= today <= obj.room_category.discount_end_date:
+                        return True
+        
+        # Check property availability for discounts on the check-in date
+        if obj.check_in:
+            has_availability_discount = obj.property_obj.availability.filter(
+                date=obj.check_in,
+                has_discount=True
+            ).exists()
+            if has_availability_discount:
+                return True
+        
+        return False
+
+    def get_discount_percentage(self, obj):
+        """Get highest discount percentage"""
+        from django.utils import timezone
+        today = timezone.now().date()
+        
+        # Check room category for active discounts
+        if obj.room_category:
+            if obj.room_category.has_discount:
+                if obj.room_category.discount_start_date and obj.room_category.discount_end_date:
+                    if obj.room_category.discount_start_date <= today <= obj.room_category.discount_end_date:
+                        return int(obj.room_category.discount_percentage) if obj.room_category.discount_percentage else 0
+        
+        # Check property availability for discounts
+        if obj.check_in:
+            availability = obj.property_obj.availability.filter(
+                date=obj.check_in,
+                has_discount=True
+            ).first()
+            if availability and availability.discount_percentage:
+                return int(availability.discount_percentage)
+        
+        return 0
+
+    def get_original_price(self, obj):
+        """Get original/base price before discount"""
+        if obj.room_category:
+            return float(obj.room_category.base_price)
+        if obj.room:
+            return float(obj.room.price_per_night)
+        return float(obj.total_price)
+
+    def get_effective_price(self, obj):
+        """Get effective price with discount applied"""
+        original = self.get_original_price(obj)
+        if self.get_has_discount(obj):
+            discount = self.get_discount_percentage(obj)
+            return original * (1 - discount / 100)
+        return original
 
 
 class PaymentCreateSerializer(serializers.ModelSerializer):

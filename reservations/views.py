@@ -518,23 +518,52 @@ def upload_payment_receipt_view(request, reservation_ref):
     if not receipt:
         return Response({'error': 'Receipt file is required'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Update reservation with receipt
+    # Update reservation with receipt (will use R2 storage if configured)
     try:
-        import os
         from django.conf import settings
-        media_root = settings.MEDIA_ROOT
         
-        if not os.path.exists(media_root):
-            os.makedirs(media_root, exist_ok=True)
+        # Generate unique filename to avoid conflicts
+        import uuid
+        from django.utils.text import slugify
+        import logging
+        logger = logging.getLogger(__name__)
         
-        receipt_dir = os.path.join(media_root, 'payment_receipts')
-        if not os.path.exists(receipt_dir):
-            os.makedirs(receipt_dir, exist_ok=True)
+        file_extension = receipt.name.split('.')[-1] if '.' in receipt.name else 'jpg'
+        unique_filename = f"payment_receipts/{slugify(reservation.reference)}_{uuid.uuid4().hex[:8]}.{file_extension}"
         
+        # Rename file for better organization
+        receipt.name = unique_filename
+        
+        # Log before upload
+        storage_method = "R2" if getattr(settings, 'USE_R2', False) else "Local"
+        logger.info(f"Starting payment receipt upload using {storage_method} storage: {unique_filename}")
+        print(f"Starting payment receipt upload using {storage_method} storage: {unique_filename}")
+        
+        # Save the file
         reservation.payment_receipt = receipt
         reservation.receipt_uploaded_at = timezone.now()
         reservation.save()
+        
+        # Log successful upload
+        logger.info(f"Payment receipt uploaded successfully: {unique_filename}")
+        print(f"Payment receipt uploaded successfully: {unique_filename}")
+        
+        # Verify the file was saved and get URL
+        if reservation.payment_receipt:
+            receipt_url = reservation.payment_receipt.url
+            logger.info(f"Payment receipt URL: {receipt_url}")
+            print(f"Payment receipt URL: {receipt_url}")
+        else:
+            logger.error("Payment receipt field is None after save")
+            print("ERROR: Payment receipt field is None after save")
+        
     except Exception as e:
+        import traceback
+        error_details = f'Failed to save receipt: {str(e)}\nTraceback: {traceback.format_exc()}'
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(error_details)
+        print(f"ERROR: {error_details}")
         return Response({'error': f'Failed to save receipt: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     # Create notification for owner (with error handling)

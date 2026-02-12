@@ -32,7 +32,9 @@ class Reservation(models.Model):
     check_in = models.DateField()
     check_out = models.DateField()
     guests = models.IntegerField()
-    total_price = models.DecimalField(max_digits=10, decimal_places=2)
+    total_price = models.DecimalField(max_digits=12, decimal_places=2)
+    original_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)  # Original price before discount
+    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=0)  # Discount percentage at time of booking
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

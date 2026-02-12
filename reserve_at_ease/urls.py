@@ -8,6 +8,7 @@ from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from django.http import HttpResponse
 from django.core.mail import send_mail
+from .custom_admin import admin_site
 
 # API Documentation Schema View
 schema_view = get_schema_view(
@@ -40,7 +41,7 @@ def test_email_view(request):
 
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    path("admin/", admin_site.urls),
     path("api/auth/", include('accounts.urls')),
     
     # Test email endpoint

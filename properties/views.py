@@ -353,7 +353,7 @@ class RoomCategoryListCreateView(generics.ListCreateAPIView):
             return RoomCategory.objects.filter(
                 property_id=property_id
             ).filter(
-                Q(property__authorized_users=user) | Q(property__created_by=user)
+                Q(property__owner=user) | Q(property__authorized_users=user) | Q(property__created_by=user)
             )
         elif user.owner_type == 'single':
             # Single owners only see room categories for their properties
@@ -419,7 +419,7 @@ class RoomCategoryDetailView(generics.RetrieveUpdateDestroyAPIView):
         if user.owner_type == 'multi':
             # Multi-owners see room categories for properties they own or created
             return RoomCategory.objects.filter(
-                Q(property__authorized_users=user) | Q(property__created_by=user)
+                Q(property__owner=user) | Q(property__authorized_users=user) | Q(property__created_by=user)
             )
         elif user.owner_type == 'single':
             # Single owners only see room categories for their properties
