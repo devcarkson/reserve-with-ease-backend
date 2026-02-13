@@ -53,6 +53,17 @@ CORS_ALLOWED_ORIGINS = [
 # Allow credentials for CORS
 CORS_ALLOW_CREDENTIALS = True
 
+# CSRF Settings for cross-origin requests
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:8080",
+    "https://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "https://franccj.com.ng",
+    "http://franccj.com.ng",
+]
+
 # Application definition
 
 INSTALLED_APPS = [

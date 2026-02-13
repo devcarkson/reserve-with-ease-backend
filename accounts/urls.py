@@ -4,6 +4,7 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 from . import views
+from . import session_auth
 
 app_name = 'accounts'
 
@@ -11,6 +12,11 @@ urlpatterns = [
     # Standard JWT token endpoints
     path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    
+    # Session-based auth for Django admin users accessing frontend
+    path('admin-session/', session_auth.admin_session_auth, name='admin_session_auth'),
+    path('admin-login/', session_auth.admin_session_login, name='admin_session_login'),
+    path('validate-admin-token/', session_auth.validate_admin_token, name='validate_admin_token'),
     
     # Custom registration and login
     path('register/', views.UserRegistrationView.as_view(), name='register'),

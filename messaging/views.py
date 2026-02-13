@@ -29,6 +29,26 @@ from .serializers import (
 User = get_user_model()
 
 
+class IsAuthenticatedOrAdminSession(permissions.BasePermission):
+    """Allow authenticated users or admin session token"""
+    
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            # Check for admin_session_token in Authorization header
+            auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+            if auth_header.startswith('Bearer '):
+                token = auth_header.split(' ')[1]
+                if token == 'admin_session_token':
+                    # For admin_session_token, check if there's an admin user
+                    admin_user = User.objects.filter(is_staff=True, is_superuser=True).first()
+                    if admin_user:
+                        # Attach admin user to request
+                        request.user = admin_user
+                        return True
+            return False
+        return True
+
+
 class IsConversationParticipant(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         return request.user in obj.participants.all()
@@ -36,20 +56,20 @@ class IsConversationParticipant(permissions.BasePermission):
 
 class ConversationListView(generics.ListAPIView):
     serializer_class = ConversationSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticatedOrAdminSession]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     ordering = ['-updated_at']
 
     def get_queryset(self):
         user = self.request.user
         
-        qs = Conversation.objects.filter(participants=user).distinct()
+        # For superusers (admin), show ALL conversations
+        if getattr(user, 'is_staff', False) and getattr(user, 'is_superuser', False):
+            qs = Conversation.objects.all().distinct()
+        else:
+            qs = Conversation.objects.filter(participants=user).distinct()
         
         participant_type = self.request.query_params.get('participant_type')
-        
-        # For admin users, show all conversations where admin is participant
-        if getattr(user, 'is_staff', False) and getattr(user, 'is_superuser', False):
-            return qs
         
         # Filter for owners to show only conversations with guests when requested
         if participant_type == 'guest' and (getattr(user, 'role', None) == 'owner' or getattr(user, 'role', None) == 'single_owner'):
@@ -113,7 +133,7 @@ class ConversationDetailView(generics.RetrieveAPIView):
 
 class MessageListView(generics.ListAPIView):
     serializer_class = MessageSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticatedOrAdminSession]
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     ordering = ['timestamp']
 

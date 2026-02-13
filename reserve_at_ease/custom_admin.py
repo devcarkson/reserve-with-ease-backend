@@ -27,7 +27,14 @@ class ReserveWithEaseAdminSite(AdminSite):
             from django.http import HttpResponseForbidden
             return HttpResponseForbidden("You must be a superuser to access this page.")
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:8080')
-        messages_url = f"{frontend_url}/admin/messages"
+        
+        # Create a temporary token for frontend authentication
+        import secrets
+        from django.core.cache import cache
+        token = secrets.token_urlsafe(32)
+        cache.set(f'admin_session_token_{token}', request.user.id, timeout=300)  # 5 min expiry
+        
+        messages_url = f"{frontend_url}/admin/messages?admin_token={token}"
         return redirect(messages_url)
     
     def index(self, request, extra_context=None):

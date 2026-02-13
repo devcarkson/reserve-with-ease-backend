@@ -5,7 +5,7 @@
 {{ block.super }}
 {% if request.user.is_superuser %}
 <span class="separator">|</span>
-<a href="{{ frontend_messages_url }}" target="_blank" class="history-link">
+<a href="{% url 'admin:open_frontend_messages' %}" target="_blank" class="history-link">
     <i class="fas fa-comments"></i>
     {% trans 'Messages' %}
 </a>
