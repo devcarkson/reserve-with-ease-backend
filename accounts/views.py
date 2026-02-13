@@ -258,7 +258,7 @@ def password_reset_request_view(request):
     # Send reset email
     reset_url = f"{settings.FRONTEND_URL}/reset-password/{token}/"
     try:
-        send_password_reset_email(user, reset_url)
+        _send_password_reset_email(user, reset_url)
     except Exception as e:
         print(f"Error sending password reset email: {e}")
     
@@ -286,6 +286,12 @@ def reset_password_view(request, token):
         
         password_reset.is_used = True
         password_reset.save()
+        
+        # Send confirmation email
+        try:
+            _send_password_reset_confirmation_email(user)
+        except Exception as e:
+            print(f"Error sending password reset confirmation email: {e}")
         
         return Response({'message': 'Password reset successfully'}, status=status.HTTP_200_OK)
         
@@ -996,3 +1002,15 @@ def _send_welcome_email(user):
     """Wrapper for sending welcome email - imported from notifications.utils"""
     from notifications.utils import send_welcome_email
     return send_welcome_email(user)
+
+
+def _send_password_reset_email(user, reset_url):
+    """Wrapper for sending password reset email - imported from notifications.utils"""
+    from notifications.utils import send_password_reset_email
+    return send_password_reset_email(user, reset_url)
+
+
+def _send_password_reset_confirmation_email(user):
+    """Wrapper for sending password reset confirmation email - imported from notifications.utils"""
+    from notifications.utils import send_password_reset_confirmation_email
+    return send_password_reset_confirmation_email(user)

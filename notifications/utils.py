@@ -138,6 +138,40 @@ This link will expire in 1 hour for your security.
     return False
 
 
+def send_password_reset_confirmation_email(user):
+    """Send password reset confirmation email after successful reset"""
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'https://reserve-with-ease.com')
+    context = {
+        'email': user.email,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'frontend_url': frontend_url,
+    }
+    
+    html_content = render_email_template('password_reset_confirmation', context)
+    if html_content:
+        subject = 'Your Password Has Been Reset'
+        text_content = f"""
+Password Reset Successful
+
+Dear {user.first_name} {user.last_name},
+
+Your password has been successfully reset. If you did not make this change, please contact our support team immediately.
+
+For security reasons, if you don't recognize this activity, please:
+1. Change your password again
+2. Enable two-factor authentication
+3. Contact our support team
+
+Support: support@reservewithease.com
+
+Best regards,
+The Reserve With Ease Team
+        """
+        return send_html_email(subject, html_content, [user.email], text_content)
+    return False
+
+
 def generate_email_content(template_type, template_data):
     """
     Generate email content using frontend template service or fallback
