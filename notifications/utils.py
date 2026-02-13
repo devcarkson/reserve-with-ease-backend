@@ -198,7 +198,7 @@ def send_booking_confirmation_email(reservation):
     # Prepare context for template
     context = {
         'guest_first_name': reservation.guest_first_name,
-        'property_name': reservation.property.name,
+        'property_name': reservation.property_obj.name,
         'room_name': reservation.room.name if reservation.room else None,
         'check_in': reservation.check_in.strftime('%Y-%m-%d'),
         'check_out': reservation.check_out.strftime('%Y-%m-%d'),
@@ -212,15 +212,15 @@ def send_booking_confirmation_email(reservation):
     html_content = render_email_template('booking_confirmation', context)
     
     if html_content:
-        subject = f"Booking Confirmed - {reservation.property.name}"
+        subject = f"Booking Confirmed - {reservation.property_obj.name}"
     else:
         # Fallback if template not found
-        subject = f"Booking Confirmed - {reservation.property.name}"
+        subject = f"Booking Confirmed - {reservation.property_obj.name}"
         html_content = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
             <h2>Booking Confirmed!</h2>
             <p>Dear {reservation.guest_first_name},</p>
-            <p>Your booking at <strong>{reservation.property.name}</strong> has been confirmed.</p>
+            <p>Your booking at <strong>{reservation.property_obj.name}</strong> has been confirmed.</p>
         </div>
         """
     
@@ -230,9 +230,9 @@ BOOKING CONFIRMED!
 
 Dear {reservation.guest_first_name},
 
-Your booking at {reservation.property.name} has been confirmed.
+Your booking at {reservation.property_obj.name} has been confirmed.
 
-Property: {reservation.property.name}
+Property: {reservation.property_obj.name}
 Check-in: {reservation.check_in}
 Check-out: {reservation.check_out}
 Guests: {reservation.guests}
@@ -260,12 +260,12 @@ def send_owner_booking_notification(reservation):
     """Send booking notification to property owner"""
     # Prepare context for template
     context = {
-        'owner_name': f"{reservation.property.owner.first_name} {reservation.property.owner.last_name}",
+        'owner_name': f"{reservation.property_obj.owner.first_name} {reservation.property_obj.owner.last_name}",
         'guest_first_name': reservation.guest_first_name,
         'guest_last_name': reservation.guest_last_name,
         'guest_email': reservation.guest_email,
         'guest_phone': reservation.guest_phone,
-        'property_name': reservation.property.name,
+        'property_name': reservation.property_obj.name,
         'check_in': reservation.check_in.strftime('%Y-%m-%d'),
         'check_out': reservation.check_out.strftime('%Y-%m-%d'),
         'guests': reservation.guests,
@@ -277,15 +277,15 @@ def send_owner_booking_notification(reservation):
     html_content = render_email_template('owner_booking_notification', context)
     
     if html_content:
-        subject = f"New Booking - {reservation.property.name}"
+        subject = f"New Booking - {reservation.property_obj.name}"
     else:
         # Fallback if template not found
-        subject = f"New Booking - {reservation.property.name}"
+        subject = f"New Booking - {reservation.property_obj.name}"
         html_content = f"""
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
             <h2>New Booking Received!</h2>
-            <p>Hello {reservation.property.owner.first_name},</p>
-            <p>You have received a new booking for <strong>{reservation.property.name}</strong>.</p>
+            <p>Hello {reservation.property_obj.owner.first_name},</p>
+            <p>You have received a new booking for <strong>{reservation.property_obj.name}</strong>.</p>
         </div>
         """
     
@@ -293,9 +293,9 @@ def send_owner_booking_notification(reservation):
     text_content = f"""
 NEW BOOKING RECEIVED!
 
-Hello {reservation.property.owner.first_name} {reservation.property.owner.last_name},
+Hello {reservation.property_obj.owner.first_name} {reservation.property_obj.owner.last_name},
 
-You have received a new booking for {reservation.property.name}.
+You have received a new booking for {reservation.property_obj.name}.
 
 Guest: {reservation.guest_first_name} {reservation.guest_last_name}
 Email: {reservation.guest_email}
@@ -309,7 +309,7 @@ Please respond within 24 hours.
     
     # Create email notification
     email_notification = EmailNotification.objects.create(
-        recipient=reservation.property.owner.email,
+        recipient=reservation.property_obj.owner.email,
         subject=subject,
         html_content=html_content,
         text_content=text_content
@@ -408,10 +408,10 @@ def send_booking_notifications(reservation):
     
     # In-app notification to owner
     create_notification(
-        user=reservation.property.owner,
+        user=reservation.property_obj.owner,
         notification_type='booking_confirmed',
         title='New Booking Received',
-        message=f'You have received a new booking for {reservation.property.name} from {reservation.guest_first_name} {reservation.guest_last_name}.',
+        message=f'You have received a new booking for {reservation.property_obj.name} from {reservation.guest_first_name} {reservation.guest_last_name}.',
         action_url=f'/owner/reservations/{reservation.id}',
         related_object=reservation
     )
@@ -421,7 +421,7 @@ def send_booking_notifications(reservation):
         user=reservation.user,
         notification_type='booking_confirmed',
         title='Booking Confirmed',
-        message=f'Your booking at {reservation.property.name} has been confirmed.',
+        message=f'Your booking at {reservation.property_obj.name} has been confirmed.',
         action_url=f'/user/reservations/{reservation.id}',
         related_object=reservation
     )

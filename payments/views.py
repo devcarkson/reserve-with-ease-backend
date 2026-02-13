@@ -192,7 +192,7 @@ class PaymentMethodViewSet(viewsets.ModelViewSet):
 
 
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([])
 def get_owner_payment_method_view(request, owner_id):
     """Get the payment method for a specific owner"""
     print(f"DEBUG: Received owner_id: '{owner_id}' - looking for owner's payment method")

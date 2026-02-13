@@ -7,5 +7,5 @@ router.register(r'payment-methods', views.PaymentMethodViewSet, basename='paymen
 
 urlpatterns = [
     path('', include(router.urls)),
-    path('owner-payment-method/<str:owner_id>/', views.get_owner_payment_method_view, name='owner-payment-method'),
+    path('owner-payment-method/<int:owner_id>/', views.get_owner_payment_method_view, name='owner-payment-method'),
 ]

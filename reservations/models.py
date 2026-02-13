@@ -1,8 +1,19 @@
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.conf import settings
 from properties.models import Property, Room
+from django.db.models.signals import pre_save, post_save
+from django.dispatch import receiver
 
 User = get_user_model()
+
+# Import R2 storage if enabled
+if settings.USE_R2:
+    from reserve_at_ease.custom_storage import R2Storage
+    r2_storage = R2Storage()
+else:
+    from django.core.files.storage import default_storage
+    r2_storage = default_storage
 
 
 class Reservation(models.Model):
@@ -52,7 +63,7 @@ class Reservation(models.Model):
     payment_date = models.DateTimeField(null=True, blank=True)
     collected_by = models.CharField(max_length=100, blank=True)
     payment_notes = models.TextField(blank=True)
-    payment_receipt = models.ImageField(upload_to='payment_receipts/', blank=True, null=True)
+    payment_receipt = models.ImageField(upload_to='payment_receipts/', storage=r2_storage, blank=True, null=True)
     receipt_uploaded_at = models.DateTimeField(null=True, blank=True)
     
     # Additional information
@@ -215,3 +226,100 @@ class ReviewInvitation(models.Model):
     
     def __str__(self):
         return f"Review Invitation for Reservation {self.reservation.id}"
+
+
+# Track previous values to detect changes
+@receiver(pre_save, sender=Reservation)
+def track_reservation_changes(sender, instance, **kwargs):
+    """
+    Track previous values before save to detect changes
+    """
+    if instance.pk:  # Only for existing instances
+        try:
+            old_instance = sender.objects.get(pk=instance.pk)
+            instance._old_status = old_instance.status
+            instance._old_payment_status = old_instance.payment_status
+        except sender.DoesNotExist:
+            instance._old_status = None
+            instance._old_payment_status = None
+    else:
+        instance._old_status = None
+        instance._old_payment_status = None
+
+
+@receiver(post_save, sender=Reservation)
+def send_booking_confirmation_on_status_change(sender, instance, created, **kwargs):
+    """
+    Send booking confirmation email when:
+    1. Reservation status changes to 'confirmed'
+    2. Payment status changes to 'paid'
+    """
+    if created:
+        # Don't send email on creation, only on status changes
+        return
+    
+    try:
+        from notifications.utils import send_booking_confirmation_email
+        
+        # Get old values from pre_save signal
+        old_status = getattr(instance, '_old_status', None)
+        old_payment_status = getattr(instance, '_old_payment_status', None)
+        
+        # Check if status changed
+        status_changed = old_status is not None and old_status != instance.status
+        payment_status_changed = old_payment_status is not None and old_payment_status != instance.payment_status
+        
+        # Send email if status changed to 'confirmed' or payment status changed to 'paid'
+        should_send_email = False
+        
+        if status_changed and instance.status == 'confirmed':
+            should_send_email = True
+            print(f"🔔 Reservation {instance.id} status changed from '{old_status}' to 'confirmed' - sending booking confirmation email")
+            
+        if payment_status_changed and instance.payment_status == 'paid':
+            should_send_email = True
+            print(f"🔔 Reservation {instance.id} payment status changed from '{old_payment_status}' to 'paid' - sending booking confirmation email")
+        
+        if should_send_email:
+            try:
+                # Send booking confirmation to guest
+                email_notification = send_booking_confirmation_email(instance)
+                if email_notification:
+                    print(f"✅ Booking confirmation email sent to {instance.guest_email}")
+                    print(f"   - Email ID: {email_notification.id}")
+                    print(f"   - Status: {email_notification.status}")
+                else:
+                    print(f"❌ Failed to create booking confirmation email")
+                
+                # Send booking notification to property owner
+                try:
+                    from notifications.utils import send_owner_booking_notification
+                    owner_email_notification = send_owner_booking_notification(instance)
+                    if owner_email_notification:
+                        print(f"✅ Owner booking notification sent to {instance.property_obj.owner.email}")
+                        print(f"   - Email ID: {owner_email_notification.id}")
+                        print(f"   - Status: {owner_email_notification.status}")
+                    else:
+                        print(f"❌ Failed to create owner booking notification")
+                except Exception as owner_error:
+                    print(f"❌ Error sending owner booking notification: {owner_error}")
+                    import traceback
+                    traceback.print_exc()
+                    
+            except Exception as e:
+                print(f"❌ Error sending booking confirmation email: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            if status_changed or payment_status_changed:
+                print(f"ℹ️  Reservation {instance.id} updated but no email sent:")
+                print(f"   - Status: {old_status} -> {instance.status}")
+                print(f"   - Payment Status: {old_payment_status} -> {instance.payment_status}")
+                
+    except ImportError:
+        # notifications app might not be available
+        print("Warning: notifications app not available for booking confirmation emails")
+    except Exception as e:
+        print(f"❌ Error in booking confirmation signal: {e}")
+        import traceback
+        traceback.print_exc()

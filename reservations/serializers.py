@@ -69,6 +69,7 @@ class ReservationCreateSerializer(serializers.ModelSerializer):
                   'guest_first_name', 'guest_last_name', 'guest_email', 'guest_phone',
                   'payment_method', 'special_requests', 'estimated_arrival_time', 'flight_details',
                   'total_price', 'original_price', 'discount_percentage')
+        read_only_fields = ('total_price', 'original_price', 'discount_percentage')
 
     def validate(self, attrs):
         check_in = attrs['check_in']

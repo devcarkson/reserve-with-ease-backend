@@ -471,6 +471,15 @@ def add_payment_view(request, reservation_id):
 
     reservation.save()
     
+    # Send booking confirmation email when payment status changes to paid
+    if total_paid >= reservation.total_price:
+        try:
+            from notifications.utils import send_booking_confirmation_email
+            send_booking_confirmation_email(reservation)
+            print(f"Booking confirmation email sent to {reservation.guest_email}")
+        except Exception as e:
+            print(f"Failed to send booking confirmation email: {e}")
+    
     return Response(PaymentSerializer(payment).data, status=status.HTTP_201_CREATED)
 
 
@@ -610,15 +619,22 @@ def approve_payment_view(request, reservation_id):
     reservation.save()
 
     # Create notification for guest
-    from notifications.utils import create_notification
+    from notifications.utils import create_notification, send_booking_confirmation_email
     create_notification(
         user=reservation.user,
         notification_type='payment_received',
         title='Payment Approved',
-        message=f'Your payment for the booking at {reservation.property.name} has been approved.',
+        message=f'Your payment for booking at {reservation.property.name} has been approved.',
         action_url=f'/user/reservations/{reservation.id}',
         related_object=reservation
     )
+
+    # Send booking confirmation email to guest when payment is confirmed
+    try:
+        send_booking_confirmation_email(reservation)
+        print(f"Booking confirmation email sent to {reservation.guest_email}")
+    except Exception as e:
+        print(f"Failed to send booking confirmation email: {e}")
 
     return Response({
         'message': 'Payment approved successfully',

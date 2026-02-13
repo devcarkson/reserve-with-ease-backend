@@ -66,7 +66,8 @@ class EmailNotification(models.Model):
                 fail_silently=False,
             )
             self.status = 'sent'
-            self.sent_at = models.DateTimeField(auto_now=True)
+            from django.utils import timezone
+            self.sent_at = timezone.now()
             self.save()
             return True
         except Exception as e:
