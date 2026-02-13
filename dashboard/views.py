@@ -11,7 +11,7 @@ from accounts.models import User
 from .models import (
     UserDashboardStats, OwnerDashboardStats, AdminDashboardStats,
     RevenueAnalytics, BookingAnalytics, PropertyPerformance,
-    UserActivity, SystemAlert
+    UserActivity, SystemAlert, PlatformVisit, PlatformVisitLog
 )
 from .serializers import (
     UserDashboardStatsSerializer, OwnerDashboardStatsSerializer,
@@ -589,3 +589,134 @@ def reservation_performance_view(request):
     }
     
     return Response(performance_data)
+
+
+@api_view(['GET'])
+@permission_classes([])  # Public endpoint - no authentication required
+def platform_stats_view(request):
+    """Get platform-wide statistics for public display"""
+    from django.utils import timezone
+    from datetime import timedelta
+    
+    # Calculate monthly visitors from tracked visits (scaled by 1000x)
+    thirty_days_ago = timezone.now().date() - timedelta(days=30)
+    monthly_visits = PlatformVisit.objects.filter(
+        visit_date__gte=thirty_days_ago
+    ).aggregate(
+        total_views=Sum('page_views'),
+        total_unique=Sum('unique_visitors')
+    )
+    
+    real_monthly_visits = (monthly_visits['total_views'] or 0) + (monthly_visits['total_unique'] or 0)
+    
+    # Scale real visits by 1000x
+    monthly_visitors = real_monthly_visits * 1000
+    
+    # Calculate annual bookings - REAL total across platform
+    one_year_ago = timezone.now() - timedelta(days=365)
+    annual_bookings = Reservation.objects.filter(
+        created_at__gte=one_year_ago
+    ).count()
+    
+    # Calculate annual revenue - REAL total across platform
+    annual_revenue = Reservation.objects.filter(
+        payment_status='paid',
+        created_at__gte=one_year_ago
+    ).aggregate(total=Sum('total_price'))['total'] or 0
+    
+    # Calculate host satisfaction (based on reviews)
+    avg_rating = Review.objects.aggregate(avg=Avg('rating'))['avg'] or 0
+    
+    stats = {
+        'monthly_visitors': monthly_visitors,  # Scaled 1000x from real visits
+        'real_monthly_visits': real_monthly_visits,  # Real tracked visits
+        'annual_bookings': annual_bookings,  # REAL total bookings
+        'annual_revenue': annual_revenue,  # REAL total revenue
+        'host_satisfaction': round(avg_rating * 20, 1) if avg_rating > 0 else 95.0,
+        'total_hosts': User.objects.filter(role='owner').count(),
+        'total_properties': Property.objects.count(),
+        'total_users': User.objects.count(),
+    }
+    
+    return Response(stats)
+
+
+@api_view(['POST'])
+@permission_classes([])  # Public endpoint - no authentication required
+def track_visit_view(request):
+    """Track a platform visit"""
+    from django.utils import timezone
+    import json
+    import uuid
+    
+    today = timezone.now().date()
+    
+    # Parse request body
+    try:
+        if hasattr(request, 'data'):
+            data = request.data
+        else:
+            data = json.loads(request.body)
+    except (json.JSONDecodeError, AttributeError):
+        data = {}
+    
+    session_key = data.get('session_key', str(uuid.uuid4()))
+    path = data.get('path', '/')
+    
+    # Get or create today's visit record
+    visit, created = PlatformVisit.objects.get_or_create(
+        visit_date=today,
+        defaults={'page_views': 0, 'unique_visitors': 0}
+    )
+    
+    # Increment page views
+    visit.page_views += 1
+    visit.save()
+    
+    # Check if this is a unique visitor (new session)
+    existing_log = PlatformVisitLog.objects.filter(
+        session_key=session_key,
+        visited_at__date=today
+    ).first()
+    
+    if not existing_log:
+        # New unique visitor today
+        visit.unique_visitors += 1
+        visit.save()
+        
+        # Create log entry
+        PlatformVisitLog.objects.create(
+            session_key=session_key,
+            ip_address=get_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:500],
+            referrer=request.META.get('HTTP_REFERER', '')[:500],
+            path=path,
+            is_unique=True
+        )
+    else:
+        # Returning visitor - just log the page view
+        PlatformVisitLog.objects.create(
+            session_key=session_key,
+            ip_address=get_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:500],
+            referrer=request.META.get('HTTP_REFERER', '')[:500],
+            path=path,
+            is_unique=False
+        )
+    
+    return Response({
+        'success': True,
+        'session_key': session_key,
+        'today_views': visit.page_views,
+        'today_unique': visit.unique_visitors
+    })
+
+
+def get_client_ip(request):
+    """Get client IP address from request"""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip

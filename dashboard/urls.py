@@ -25,4 +25,10 @@ urlpatterns = [
     # System Alerts
     path('alerts/', views.system_alerts_view, name='system-alerts'),
     path('alerts/<int:alert_id>/read/', views.mark_alert_read_view, name='mark-alert-read'),
+
+    # Platform Stats (public - for login page)
+    path('platform/stats/', views.platform_stats_view, name='platform-stats'),
+    
+    # Track Visit (public)
+    path('platform/track-visit/', views.track_visit_view, name='track-visit'),
 ]

@@ -274,3 +274,34 @@ class NotificationPreference(models.Model):
     
     def __str__(self):
         return f"Notification preference for {self.user.username} - {self.notification_type}"
+
+
+class PlatformVisit(models.Model):
+    """Track platform visits for visitor statistics"""
+    visit_date = models.DateField()
+    page_views = models.IntegerField(default=0)
+    unique_visitors = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-visit_date']
+        
+    def __str__(self):
+        return f"Visits on {self.visit_date}: {self.page_views} views, {self.unique_visitors} unique visitors"
+
+
+class PlatformVisitLog(models.Model):
+    """Individual visit log for tracking unique visitors"""
+    session_key = models.CharField(max_length=255)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    referrer = models.TextField(blank=True)
+    path = models.CharField(max_length=500, blank=True)
+    is_unique = models.BooleanField(default=True)
+    visited_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-visited_at']
+        
+    def __str__(self):
+        return f"Visit: {self.session_key} at {self.path}"
