@@ -598,7 +598,7 @@ def platform_stats_view(request):
     from django.utils import timezone
     from datetime import timedelta
     
-    # Calculate monthly visitors from tracked visits (scaled by 1000x)
+    # Calculate monthly visitors from tracked visits
     thirty_days_ago = timezone.now().date() - timedelta(days=30)
     monthly_visits = PlatformVisit.objects.filter(
         visit_date__gte=thirty_days_ago
@@ -608,9 +608,7 @@ def platform_stats_view(request):
     )
     
     real_monthly_visits = (monthly_visits['total_views'] or 0) + (monthly_visits['total_unique'] or 0)
-    
-    # Scale real visits by 1000x
-    monthly_visitors = real_monthly_visits * 1000
+    monthly_visitors = real_monthly_visits
     
     # Calculate annual bookings - REAL total across platform
     one_year_ago = timezone.now() - timedelta(days=365)
@@ -618,21 +616,26 @@ def platform_stats_view(request):
         created_at__gte=one_year_ago
     ).count()
     
+    # Calculate bookings per month (average) - REAL
+    bookings_per_month = max(1, annual_bookings // 12)
+    
     # Calculate annual revenue - REAL total across platform
     annual_revenue = Reservation.objects.filter(
         payment_status='paid',
         created_at__gte=one_year_ago
     ).aggregate(total=Sum('total_price'))['total'] or 0
     
-    # Calculate host satisfaction (based on reviews)
+    # Calculate host satisfaction (based on reviews) - REAL
     avg_rating = Review.objects.aggregate(avg=Avg('rating'))['avg'] or 0
+    host_satisfaction = round(avg_rating * 20, 1) if avg_rating > 0 else 0
     
     stats = {
-        'monthly_visitors': monthly_visitors,  # Scaled 1000x from real visits
-        'real_monthly_visits': real_monthly_visits,  # Real tracked visits
-        'annual_bookings': annual_bookings,  # REAL total bookings
-        'annual_revenue': annual_revenue,  # REAL total revenue
-        'host_satisfaction': round(avg_rating * 20, 1) if avg_rating > 0 else 95.0,
+        'monthly_visitors': monthly_visitors,  # REAL
+        'real_monthly_visits': real_monthly_visits,  # REAL
+        'annual_bookings': annual_bookings,  # REAL
+        'bookings_per_month': bookings_per_month,  # REAL
+        'annual_revenue': annual_revenue,  # REAL
+        'host_satisfaction': host_satisfaction,  # REAL
         'total_hosts': User.objects.filter(role='owner').count(),
         'total_properties': Property.objects.count(),
         'total_users': User.objects.count(),
