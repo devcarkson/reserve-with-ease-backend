@@ -232,6 +232,7 @@ def owner_reservations_view(request):
     property_id = request.GET.get('property_id')
     include_performance = request.GET.get('performance') == 'true'
     time_period = request.GET.get('time_period', 'all')  # week, month, year, all
+    limit = request.GET.get('limit', None)  # Optional limit for number of results
 
     # Base queryset based on owner type
     if request.user.owner_type == 'multi':
@@ -389,6 +390,19 @@ def owner_reservations_view(request):
         })
 
     reservations = queryset
+    
+    # Apply ordering
+    ordering = request.GET.get('ordering', '-created_at')
+    reservations = reservations.order_by(ordering)
+    
+    # Apply limit if provided
+    if limit:
+        try:
+            limit = int(limit)
+            reservations = reservations[:limit]
+        except (ValueError, TypeError):
+            pass
+    
     serializer = OwnerReservationSerializer(reservations, many=True)
     return Response(serializer.data)
 

@@ -1,0 +1,146 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{% url 'admin:app_list' app_label='payments' %}">Payments</a>
+&rsaquo; <a href="{% url 'admin:payments_monthlyinvoice_changelist' %}">Monthly invoices</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">    
+    <div class="module">
+        <form method="post" action="">
+            {% csrf_token %}
+            
+            <div class="form-row">
+                <div>
+                    <label for="id_month" class="required">{{ form.month.label }}:</label>
+                    {{ form.month }}
+                    {% if form.month.help_text %}
+                    <div class="help">{{ form.month.help_text }}</div>
+                    {% endif %}
+                    {% if form.month.errors %}
+                    <ul class="errorlist">
+                        {% for error in form.month.errors %}
+                        <li>{{ error }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div>
+                    <label for="id_regenerate">{{ form.regenerate.label }}:</label>
+                    {{ form.regenerate }}
+                    {% if form.regenerate.help_text %}
+                    <div class="help">{{ form.regenerate.help_text }}</div>
+                    {% endif %}
+                    {% if form.regenerate.errors %}
+                    <ul class="errorlist">
+                        {% for error in form.regenerate.errors %}
+                        <li>{{ error }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="submit-row">
+                <input type="submit" value="{% trans 'Generate Invoices' %}" class="default" name="_generate">
+                <a href="{% url 'admin:payments_monthlyinvoice_changelist' %}" class="cancellink">{% trans 'Cancel' %}</a>
+            </div>
+        </form>
+    </div>
+    
+    <div class="module" style="margin-top: 20px;">
+        <h2>{% trans 'How it works' %}</h2>
+        <p>{% trans 'This tool will generate monthly invoices for all property owners based on their paid reservations during the selected month.' %}</p>
+        <ul>
+            <li>{% trans 'Select the month for which you want to generate invoices' %}</li>
+            <li>{% trans 'Choose whether to regenerate existing invoices (overwrite them) or skip them' %}</li>
+            <li>{% trans 'Click "Generate Invoices" to create draft invoices for all owners' %}</li>
+            <li>{% trans 'After generation, you can review and publish the invoices from the list view' %}</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+.form-row {
+    margin-bottom: 20px;
+}
+.form-row label {
+    display: block;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+.form-row input[type="month"] {
+    width: 200px;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+.form-row input[type="checkbox"] {
+    margin-right: 8px;
+}
+.help {
+    font-size: 12px;
+    color: #666;
+    margin-top: 5px;
+}
+.errorlist {
+    color: #ba2121;
+    margin-top: 5px;
+}
+.errorlist li {
+    list-style-type: none;
+}
+.submit-row {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid #ddd;
+}
+.submit-row input[type="submit"] {
+    background: var(--primary);
+    border: 1px solid var(--primary);
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    text-decoration: none;
+    display: inline-block;
+}
+.submit-row input[type="submit"]:hover {
+    background: var(--primary-hover, var(--primary));
+    border-color: var(--primary-hover, var(--primary));
+}
+.cancellink {
+    margin-left: 15px;
+    color: var(--link-fg);
+}
+.module {
+    background: var(--body-bg);
+    border: 1px solid var(--border-color);
+    padding: 20px;
+    border-radius: 4px;
+}
+.module h2 {
+    margin-top: 0;
+    color: var(--header-fg);
+}
+.module ul {
+    margin: 15px 0;
+    padding-left: 20px;
+}
+.module ul li {
+    margin-bottom: 8px;
+}
+</style>
+{% endblock %}

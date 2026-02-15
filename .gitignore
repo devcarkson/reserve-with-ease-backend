@@ -41,7 +41,7 @@ MANIFEST
 
 # Virtual environments
 venv/
-env/
+# env/
 ENV/
 
 # IDE
@@ -70,6 +70,8 @@ coverage.xml
 # Celery
 celerybeat-schedule
 celerybeat.pid
+logs
+env
 
 # Redis dump
 dump.rdb

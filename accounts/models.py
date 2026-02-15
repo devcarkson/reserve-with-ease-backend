@@ -114,7 +114,7 @@ class EmailVerification(models.Model):
     
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='email_verifications')
     token = models.CharField(max_length=255, unique=True)
-    email = models.EmailField(blank=True)
+    email = models.EmailField(blank=True, default='')
     invitation_type = models.CharField(max_length=20, choices=INVITATION_TYPE_CHOICES, blank=True)
     owner_type = models.CharField(max_length=10, blank=True)
     property_id = models.IntegerField(null=True, blank=True)

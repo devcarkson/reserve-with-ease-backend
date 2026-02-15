@@ -1,5 +1,39 @@
 from rest_framework import serializers
-from .models import PaymentMethod
+from .models import PaymentMethod, MonthlyInvoice
+
+
+class ReservationSerializer(serializers.Serializer):
+    """Serializer for reservation data in invoices"""
+    id = serializers.CharField(source='reference')
+    guest_name = serializers.SerializerMethodField()
+    check_in = serializers.DateField()
+    check_out = serializers.DateField()
+    amount = serializers.DecimalField(max_digits=12, decimal_places=2, source='amount_paid')
+    status = serializers.CharField()
+    property_name = serializers.CharField(source='property_obj.name')
+    
+    def get_guest_name(self, obj):
+        return f"{obj.guest_first_name} {obj.guest_last_name}"
+
+
+class MonthlyInvoiceSerializer(serializers.ModelSerializer):
+    month_display = serializers.ReadOnlyField()
+    period_display = serializers.ReadOnlyField()
+    reservations = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = MonthlyInvoice
+        fields = [
+            'id', 'owner', 'month', 'month_display', 'period_start', 'period_end',
+            'period_display', 'total_reservations', 'subtotal', 'vat_amount',
+            'total_amount', 'status', 'issue_date', 'due_date', 'published_at', 'paid_date',
+            'reservations'
+        ]
+        read_only_fields = ['id', 'issue_date', 'due_date', 'published_at', 'paid_date']
+    
+    def get_reservations(self, obj):
+        reservations = obj.get_reservations()
+        return ReservationSerializer(reservations, many=True).data
 
 
 class PaymentMethodSerializer(serializers.ModelSerializer):

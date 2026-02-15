@@ -49,6 +49,8 @@ CORS_ALLOWED_ORIGINS = [
     "https://pub-55e6e691913e44f98f71163828507001.r2.dev",
     "https://franccj.com.ng",
     "http://franccj.com.ng",
+    "https://reservewithease.com",
+    "http://reservewithease.com",
 ]
 # Allow credentials for CORS
 CORS_ALLOW_CREDENTIALS = True
@@ -62,6 +64,8 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "https://franccj.com.ng",
     "http://franccj.com.ng",
+    "https://reservewithease.com",
+    "http://reservewithease.com",
 ]
 
 # Application definition
@@ -274,15 +278,6 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
 }
 
-# CORS Settings
-# CORS_ALLOWED_ORIGINS = [
-#     "http://localhost:3000",
-#     "http://127.0.0.1:3000",
-#     "http://localhost:5173",
-#     "http://127.0.0.1:5173",
-#     "http://localhost:8080",
-#     "http://127.0.0.1:8080",
-# ]
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = False
@@ -291,18 +286,6 @@ CORS_ALLOW_ALL_ORIGINS = False
 FRONTEND_URL = config('FRONTEND_URL', default='http://localhost:5173')
 
 # Email Configuration
-# For testing, uncomment the console backend line below
-# EMAIL_BACKEND = config('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')
-# # EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'  # For testing
-
-# EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
-# EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
-# EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
-# EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
-# EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
-# DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='Reservewithease <noreply@reservewithease.com>')
-# ADMIN_EMAIL = config('ADMIN_EMAIL', default='decarkson@gmail.com')
-
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = config('EMAIL_HOST', default='smtp.gmail.com')
@@ -317,27 +300,6 @@ ADMIN_EMAIL = config('ADMIN_EMAIL', default='decarkson@gmail.com')
 # Email sender name
 EMAIL_SENDER_NAME = 'Reservewithease'
 
-# Email logging
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-        },
-    },
-    'loggers': {
-        'django': {
-            'handlers': ['console'],
-            'level': 'INFO',
-        },
-        'django.core.mail': {
-            'handlers': ['console'],
-            'level': 'DEBUG',
-            'propagate': True,
-        },
-    },
-}
 
 # AWS S3 Configuration (for production)
 USE_S3 = config('USE_S3', default=False, cast=bool)
@@ -358,49 +320,6 @@ if USE_S3:
     STATIC_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/static/'
     MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/'
 
-# Celery Configuration (commented out - Redis not running)
-# CELERY_BROKER_URL = config('CELERY_BROKER_URL', default='redis://localhost:6379/0')
-# CELERY_RESULT_BACKEND = config('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0')
-# CELERY_ACCEPT_CONTENT = ['json']
-# CELERY_TASK_SERIALIZER = 'json'
-# CELERY_RESULT_SERIALIZER = 'json'
-# CELERY_TIMEZONE = TIME_ZONE
-
-# Redis Cache Configuration (commented out - Redis not running)
-# CACHES = {
-#     'default': {
-#         'BACKEND': 'django_redis.cache.RedisCache',
-#         'LOCATION': config('REDIS_URL', default='redis://127.0.0.1:6379/1'),
-#         'OPTIONS': {
-#             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-#         }
-#     }
-# }
-
-# Cache settings (commented out - Redis not running)
-# CACHE_MIDDLEWARE_ALIAS = 'default'
-# CACHE_MIDDLEWARE_SECONDS = 300  # 5 minutes
-# CACHE_MIDDLEWARE_KEY_PREFIX = 'reserve_at_ease'
-
-# Logging
-# LOGGING = {
-#     'version': 1,
-#     'disable_existing_loggers': False,
-#     'handlers': {
-#         'file': {
-#             'level': 'INFO',
-#             'class': 'logging.FileHandler',
-#             'filename': os.path.join(BASE_DIR, 'logs', 'django.log'),
-#         },
-#     },
-#     'loggers': {
-#         'django': {
-#             'handlers': ['file'],
-#             'level': 'INFO',
-#             'propagate': True,
-#         },
-#     },
-# }
 
 # Security Settings for Production
 if not DEBUG:

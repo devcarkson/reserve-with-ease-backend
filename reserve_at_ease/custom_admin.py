@@ -59,10 +59,7 @@ admin_site = ReserveWithEaseAdminSite(name='admin')
 # Copy registrations from django.contrib.admin.site
 from django.contrib.admin import site
 from dashboard.models import (
-    UserDashboardStats, OwnerDashboardStats, AdminDashboardStats,
-    RevenueAnalytics, BookingAnalytics, PropertyPerformance,
-    UserActivity, SystemAlert, DashboardWidget, Report,
-    NotificationPreference
+    OwnerDashboardStats
 )
 from accounts.models import User, UserProfile
 from properties.models import (
@@ -74,7 +71,7 @@ from reservations.models import Reservation, Payment, Refund, Cancellation, Chec
 from reviews.models import Review, ReviewResponse, PropertyReviewSummary
 from messaging.models import Conversation, Message
 from notifications.models import Notification, EmailTemplate, EmailNotification
-from accounts.models import User, UserProfile, EmailVerification, PasswordReset
+from payments.models import PaymentMethod, MonthlyInvoice
 
 # Re-register all models with custom admin site
 admin_site.register(User)
@@ -83,15 +80,11 @@ admin_site.register(PropertyType)
 admin_site.register(Property)
 admin_site.register(Room)
 admin_site.register(PropertyImage)
-admin_site.register(RoomImage)
 admin_site.register(PropertyAvailability)
-admin_site.register(RoomAvailability)
-admin_site.register(PropertyFeature)
 admin_site.register(PropertyReviewSummary)
 admin_site.register(RoomCategory)
 admin_site.register(Destination)
 admin_site.register(Reservation)
-admin_site.register(Payment)
 admin_site.register(Refund)
 admin_site.register(Cancellation)
 admin_site.register(CheckIn)
@@ -103,18 +96,10 @@ admin_site.register(ReviewResponse)
 admin_site.register(Conversation)
 admin_site.register(Message)
 admin_site.register(Notification)
-admin_site.register(EmailTemplate)
 admin_site.register(EmailNotification)
-admin_site.register(EmailVerification)
-admin_site.register(PasswordReset)
-admin_site.register(UserDashboardStats)
 admin_site.register(OwnerDashboardStats)
-admin_site.register(AdminDashboardStats)
-admin_site.register(RevenueAnalytics)
-admin_site.register(BookingAnalytics)
-admin_site.register(PropertyPerformance)
-admin_site.register(UserActivity)
-admin_site.register(SystemAlert)
-admin_site.register(DashboardWidget)
-admin_site.register(Report)
-admin_site.register(NotificationPreference)
+admin_site.register(PaymentMethod)
+
+# Register MonthlyInvoice with its admin class
+from payments.admin import MonthlyInvoiceAdmin
+admin_site.register(MonthlyInvoice, MonthlyInvoiceAdmin)

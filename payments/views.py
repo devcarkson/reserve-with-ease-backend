@@ -3,10 +3,16 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from datetime import datetime, date
+from dateutil.relativedelta import relativedelta
 from reservations.models import Reservation
 
-from .models import PaymentMethod
-from .serializers import PaymentMethodSerializer, PaymentMethodCreateUpdateSerializer
+from .models import PaymentMethod, MonthlyInvoice
+from .serializers import (
+    PaymentMethodSerializer, PaymentMethodCreateUpdateSerializer, 
+    MonthlyInvoiceSerializer
+)
 
 
 class IsAnyOwnerPermission:
@@ -229,5 +235,90 @@ def get_owner_payment_method_view(request, owner_id):
         traceback.print_exc()
         return Response(
             {'message': f'Error retrieving payment method: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def monthly_invoices_view(request):
+    """Get monthly invoices for the authenticated owner"""
+    try:
+        if request.user.role != 'owner':
+            return Response(
+                {'message': 'Access denied. Only owners can view invoices.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get owner based on owner_type
+        if request.user.owner_type == 'single':
+            # Single owners see their multi-owner's invoices
+            from properties.models import Property
+            property_obj = Property.objects.filter(authorized_users=request.user).first()
+            if property_obj and property_obj.owner:
+                owner = property_obj.owner
+            else:
+                return Response([], status=status.HTTP_200_OK)
+        else:
+            # Multi-owners see their own invoices
+            owner = request.user
+        
+        # Only return published invoices
+        invoices = MonthlyInvoice.objects.filter(
+            owner=owner,
+            status='published'
+        ).order_by('-month')
+        
+        serializer = MonthlyInvoiceSerializer(invoices, many=True)
+        return Response(serializer.data)
+        
+    except Exception as e:
+        return Response(
+            {'message': f'Error retrieving monthly invoices: {str(e)}'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def monthly_invoice_detail_view(request, invoice_id):
+    """Get detailed information for a specific monthly invoice"""
+    try:
+        if request.user.role != 'owner':
+            return Response(
+                {'message': 'Access denied. Only owners can view invoices.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        # Get owner based on owner_type
+        if request.user.owner_type == 'single':
+            # Single owners see their multi-owner's invoices
+            from properties.models import Property
+            property_obj = Property.objects.filter(authorized_users=request.user).first()
+            if property_obj and property_obj.owner:
+                owner = property_obj.owner
+            else:
+                return Response(
+                    {'message': 'Invoice not found'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            # Multi-owners see their own invoices
+            owner = request.user
+        
+        # Get the invoice
+        invoice = get_object_or_404(
+            MonthlyInvoice,
+            id=invoice_id,
+            owner=owner,
+            status='published'  # Only allow access to published invoices
+        )
+        
+        serializer = MonthlyInvoiceSerializer(invoice)
+        return Response(serializer.data)
+        
+    except Exception as e:
+        return Response(
+            {'message': f'Error retrieving invoice details: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
